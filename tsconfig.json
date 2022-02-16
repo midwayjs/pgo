@@ -1,0 +1,21 @@
+{
+  "compileOnSave": true,
+  "compilerOptions": {
+    "moduleResolution": "node",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "noImplicitThis": true,
+    "noUnusedLocals": true,
+    "stripInternal": true,
+    "noImplicitReturns": false,
+    "strict": false,
+    "noEmitOnError": false,
+    "skipLibCheck": true,
+    "outDir": "dist"
+  },
+  "exclude": [
+    "dist",
+    "node_modules",
+    "test"
+  ]
+}

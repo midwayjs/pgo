@@ -1,0 +1,25 @@
+{
+  "name": "tmp",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "egg": "^2.32.0",
+    "eslint": "^8.3.0",
+    "esprima": "^4.0.1",
+    "grunt": "^1.4.1",
+    "jquery": "^3.6.0",
+    "jsdom": "^18.1.1",
+    "lodash": "^4.17.21",
+    "rax": "^1.2.2",
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2",
+    "urllib": "^2.38.0",
+    "vue": "^2.6.14"
+  }
+}

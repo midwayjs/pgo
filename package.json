@@ -1,0 +1,41 @@
+{
+  "name": "@midwayjs/pgo-gen",
+  "description": "pgo-gen",
+  "version": "0.0.7",
+  "devDependencies": {
+    "@types/fs-extra": "^9.0.13",
+    "@types/jest": "^26.0.0",
+    "@types/node": "^10.12.18",
+    "eslint": "^7.9.0",
+    "eslint-plugin-jest": "^24.0.2",
+    "jest": "^26.4.2",
+    "ts-jest": "^26.0.0",
+    "typescript": "^4.1.0"
+  },
+  "main": "dist/main.js",
+  "bin": {
+    "pgo": "bin/pgo-bin.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "pgoCommonUtils.js"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "publish": "cnpm i && npm run build && rm -rf node_modules && cnpm i --production && s cli registry publish"
+  },
+  "dependencies": {
+    "@alicloud/fc2": "^2.5.0",
+    "@midwayjs/command-core": "^1.2.94",
+    "@serverless-devs/core": "^0.1.27",
+    "crypto-js": "^4.1.1",
+    "fs-extra": "^10.0.0",
+    "globby": "^10.0.2",
+    "js-yaml": "^4.1.0",
+    "jszip": "^3.7.1",
+    "minimist": "^1.2.5",
+    "p-limit": "^3.1.0",
+    "uuid-1345": "^1.0.2"
+  }
+}
