@@ -42,7 +42,6 @@ export class PGO {
     const pgoFunctionName = `nodePGOGen`;
     const tmpName = `${pgoFunctionName}-${Date.now()}`;
     const tmpDir = join(tmpdir(), tmpName);
-    console.log('tmpDir', tmpDir);
     await ensureDir(tmpDir);
     const entry = this.initializer.split('.');
 
