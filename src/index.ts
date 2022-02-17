@@ -1,6 +1,6 @@
 import { platform, tmpdir } from 'os';
 import { dirname, join, relative } from 'path';
-import { ensureDir, copy, lstat, readlink, createReadStream, createWriteStream, move, writeFile, existsSync, readFileSync, remove } from 'fs-extra';
+import { ensureDir, copy, lstat, readlink, createWriteStream, move, writeFile, existsSync, readFileSync, remove, readFile } from 'fs-extra';
 import { findNpm, installNpm } from '@midwayjs/command-core';
 import * as globby from 'globby';
 import * as JSZip from 'jszip';
@@ -83,6 +83,7 @@ exports.${initializerFun} = async (context, callback) => {
       ],
     });
 
+
     await Promise.all(fileList.map(file => {
       const filePath = join(this.pwd, file);
       const targetPath = join(tmpDir, file);
@@ -103,6 +104,7 @@ exports.${initializerFun} = async (context, callback) => {
     });
 
     // 打包生成zip
+    console.log('PGO tmp function zipping...')
     const tmpZipFile = `${tmpName}.zip`;
     const tmpZipFilePath = join(tmpdir(), tmpZipFile);
     await this.makeZip(tmpDir, tmpZipFilePath);
@@ -124,6 +126,8 @@ exports.${initializerFun} = async (context, callback) => {
     });
 
     const functionName = `dump-${uuid.v1()}`;
+
+    console.log('PGO create tmp function...')
     // 创建函数
     await fcClient.createFunction(serviceName, {
       code: {
@@ -146,6 +150,8 @@ exports.${initializerFun} = async (context, callback) => {
     // 移除临时文件
     await remove(tmpDir);
     await remove(tmpZipFilePath);
+
+    console.log('PGO rrc downloading...')
 
     // 生成并下载 rrc 文件
     const result = await fcClient.invokeFunction(serviceName, functionName, JSON.stringify({type: 'size'}));
@@ -218,7 +224,8 @@ exports.${initializerFun} = async (context, callback) => {
           unixPermissions: stats.mode,
         });
       } else if (stats.isFile()) {
-        zip.file(fileName, createReadStream(absPath), {
+        const fileData = await readFile(absPath);
+        zip.file(fileName, fileData, {
           binary: true,
           createFolders: true,
           unixPermissions: stats.mode,
