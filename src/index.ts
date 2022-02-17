@@ -42,6 +42,7 @@ export class PGO {
     const pgoFunctionName = `nodePGOGen`;
     const tmpName = `${pgoFunctionName}-${Date.now()}`;
     const tmpDir = join(tmpdir(), tmpName);
+    console.log('tmpDir', tmpDir);
     await ensureDir(tmpDir);
     const entry = this.initializer.split('.');
 
@@ -84,12 +85,19 @@ exports.${initializerFun} = async (context, callback) => {
     });
 
 
+    
+
+
     await Promise.all(fileList.map(file => {
       const filePath = join(this.pwd, file);
       const targetPath = join(tmpDir, file);
       return copy(filePath, targetPath);
     }));
 
+    const targetRRC = join(tmpDir, 'require_cache.strrc');
+    if (existsSync(targetRRC)) {
+      await remove(targetRRC);
+    }
 
     // 将 dryRun 写入入口文件
     const tmpEntry = join(tmpDir, entry[0] + '.js');
@@ -148,14 +156,15 @@ exports.${initializerFun} = async (context, callback) => {
     });
 
     // 移除临时文件
-    await remove(tmpDir);
-    await remove(tmpZipFilePath);
+    // await remove(tmpDir);
+    // await remove(tmpZipFilePath);
 
     console.log('PGO rrc downloading...')
 
     // 生成并下载 rrc 文件
     const result = await fcClient.invokeFunction(serviceName, functionName, JSON.stringify({type: 'size'}));
     if (!result.data || !/^\d+$/.test(result.data)) {
+      console.log('result.data', result.data);
       throw new Error(`PGO gen error:` + (result.data || 'unknown'));
     }
     const size = +result.data;
@@ -234,7 +243,13 @@ exports.${initializerFun} = async (context, callback) => {
     }
     await new Promise((res, rej) => {
       zip
-        .generateNodeStream({ platform: 'UNIX' })
+        .generateNodeStream({
+          platform: 'UNIX',
+          compression: 'DEFLATE',
+          compressionOptions: {
+              level: 6
+          }
+        })
         .pipe(createWriteStream(targetFileName))
         .once('finish', res)
         .once('error', rej);

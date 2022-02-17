@@ -7,6 +7,7 @@ let recordPgo = false;
 let pgoEntries = null;
 let pgoFilePath = null;
 let rrcErr;
+let recorded = false;
 exports.start = () => {  
   try {
     rrc = require('strontium/relational_require_cache');
@@ -16,8 +17,11 @@ exports.start = () => {
   recordPgo = process.env.PGO_RECORD || process.argv.indexOf('--record-pgo') > -1;
   pgoEntries = [ process.cwd(), path.join(__dirname, 'node_modules') ];
   loadedPgo = false;
-  if(recordPgo && rrc) {
-    rrc.record(pgoEntries);
+  if(recordPgo) {
+    if (rrc && !recorded) {
+      recorded = true;
+      rrc.record(pgoEntries);
+    }
   } else if(rrc) {
     pgoFilePath = path.join(__dirname, 'require_cache.strrc');
     if (fs.existsSync(pgoFilePath)) {
