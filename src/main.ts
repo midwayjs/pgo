@@ -21,14 +21,18 @@ export default class PGOComponent {
     const access = params?.project?.access || this.defaultAccess;
     const credential = await this.getCredential(access);
     const endpoint = await this.getEndPoint();
-    const pgoInstance = new PGO(process.cwd(), {
-      initializer: params?.props?.initializer || 'index.initializer',
-      credential,
-      access,
-      endpoint,
-      region: 'cn-chengdu'
-    });
-    await pgoInstance.gen(args);
+    if (args.lang === 'java') {
+      await this.java(params);
+    } else {
+      const pgoInstance = new PGO(process.cwd(), {
+        initializer: params?.props?.initializer || 'index.initializer',
+        credential,
+        access,
+        endpoint,
+        region: 'cn-chengdu'
+      });
+      await pgoInstance.gen(args);
+    } 
   }
 
   async java(params) {
