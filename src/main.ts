@@ -1,6 +1,7 @@
 import * as core from '@serverless-devs/core';
 import { PGO } from './index';
 import * as minimist from 'minimist';
+import JavaStartupAccelerationComponent from "./javaMain";
 // import * as YAML from 'js-yaml';
 // import { join } from 'path';
 export default class PGOComponent {
@@ -30,6 +31,10 @@ export default class PGOComponent {
     await pgoInstance.gen(args);
   }
 
+  async java(params) {
+    const component = new JavaStartupAccelerationComponent(this.defaultAccess);
+    await component.index(params);
+  }
 
   async getEndPoint() {
     const fcDefault = await core.loadComponent('devsapp/fc-default');
