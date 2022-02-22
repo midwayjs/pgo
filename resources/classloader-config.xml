@@ -8,41 +8,30 @@
         <appendJarPathsAsName>false</appendJarPathsAsName> <!--  if the klass is a URLClassLoader, `true` will add its JarPaths to its name. or, the `true` will be ignored.  -->
         <uniqueName></uniqueName>
     </classloader>
-    <classloader>
-        <klass>com.alibaba.halo.container.manage.ContainerClassLoaderWrapper</klass>
-        <uniqueName>ContainerClassLoaderWrapper_0</uniqueName>  <!--  if you make sure this classloader is a singleton, fill it with a name. Or, delete it or fill nothing.  -->
-    </classloader>
-    <classloader>
-        <klass>com.alibaba.halo.container.core.ContainerClassLoader</klass>
-        <appendJarPathsAsName>true</appendJarPathsAsName>
-    </classloader>
-    <classloader>
-        <klass>org.apache.catalina.loader.ParallelWebappClassLoader</klass>
-        <uniqueName>parallelTomcatLoader_0</uniqueName>
-    </classloader>
-    <classloader>
-        <klass>org.apache.catalina.loader.WebappClassLoader</klass>
-        <uniqueName>webTomcatLoader_0</uniqueName>
-    </classloader>
-    <classloader>
-        <klass>com.alibaba.glaucus.plugin.loader.SolutionClassLoader</klass>
-        <appendJarPathsAsName>true</appendJarPathsAsName>
-    </classloader>
-    <classloader>
-        <klass>com.alibaba.glaucus.plugin.loader.PluginClassLoader</klass>
-        <appendJarPathsAsName>true</appendJarPathsAsName>
-    </classloader>
-    <classloader>
-        <klass>org.springframework.boot.loader.LaunchedURLClassLoader</klass>
-        <uniqueName>LaunchedURLClassLoader_0</uniqueName>
-    </classloader>
+
     <classloader>
         <klass>com.taobao.pandora.boot.loader.LaunchedURLClassLoader</klass>
         <uniqueName>Taobao_LaunchedURLClassLoader_0</uniqueName>
     </classloader>
+
     <classloader>
-        <appendJarPathsAsName>true</appendJarPathsAsName>
+        <klass>org.apache.catalina.loader.ParallelWebappClassLoader</klass>
+        <uniqueName>parallelTomcatLoader_0</uniqueName>
+    </classloader>
+
+    <classloader>
+        <klass>org.apache.catalina.loader.WebappClassLoader</klass>
+        <uniqueName>webTomcatLoader_0</uniqueName>
+    </classloader>
+
+    <classloader>
+        <klass>org.springframework.boot.loader.LaunchedURLClassLoader</klass>
+        <uniqueName>LaunchedURLClassLoader_0</uniqueName>
+    </classloader>
+
+    <classloader>
         <klass>java.net.FactoryURLClassLoader</klass>
+        <appendJarPathsAsName>true</appendJarPathsAsName>
     </classloader>
 
     <classloader>
