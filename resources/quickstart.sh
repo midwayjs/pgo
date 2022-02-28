@@ -2,13 +2,12 @@
 
 echo "origin command line: $*"
 
-run () {
+check_java () {
     java_path=$1
     suffix="/bin/java"
     if [[ "$java_path" != *"$suffix" ]]; then
-        echo "can not detect JAVA_HOME, run directly"
-        exec "$@"
-        exit $?
+        echo "can not detect JAVA_HOME"
+        return 1
     else
         echo "detected JAVA_HOME: ${java_path%$suffix}"
     fi
@@ -16,36 +15,49 @@ run () {
     release_file="${java_path%$suffix}/release"
     if [ ! -f "$release_file" ]; then
         echo "$release_file does not exist."
-        exec "$@"
-        exit $?
+        return 1
     fi
 
-    if ! grep -q 'IMPLEMENTOR="Alibaba"' "$release_file"; then
-        echo "current java release is not Alibaba Dragonwell, run directly"
-        exec "$@"
-        exit $?
-    else
-        echo "current java release is Alibaba Dragonwell"
+    if ! grep -q 'IMPLEMENTOR_VERSION="(Alibaba AJDK)"' "$release_file"; then
+        echo "current Java release is not Alibaba AJDK"
+        return 1
     fi
 
-    if [[ -z "${SRPATH}" ]]; then
-      echo "env var SRPATH should be set"
-      exit 1
-    else
-      srpath="${SRPATH}"
-    fi
+    if ! grep -q 'JAVA_VERSION="11.' "$release_file"; then
+		echo "current Java version is not Alibaba AJDK 11"
+		return 1
+	fi
 
-    if [ -d "$srpath" ]
-    then
-        echo "Directory $srpath exists"
-    else
-        if mkdir -p $srpath; then
-            echo "dir $srpath created"
-        else
-            echo "dir $srpath creating encountered error"
-            exit 1
-        fi
-    fi
+	echo "check Java: passed"
+    return 0
+}
+
+check_srpath () {
+	if [[ -z "${SRPATH}" ]]; then
+		echo "env var SRPATH should be set"
+		return 1
+	else
+		srpath="${SRPATH}"
+		if [ ! -d "$srpath" ]; then
+			if mkdir -p $srpath; then
+				echo "dir $srpath created"
+			else
+				echo "dir $srpath creating encountered error"
+				return 1
+			fi
+		fi
+	fi
+
+	echo "check SRPATH: passed"
+	return 0
+}
+
+run () {
+	if ! check_java "$1" || ! check_srpath; then
+		echo "run directly without quickstart"
+		exec "$@"
+		exit $?
+	fi
 
     args=()
     i=1;
@@ -90,7 +102,7 @@ dump () {
     fi
 
     if [ ! -f "$jcmd" ]; then
-        echo "jcmd [$jcmd] does not exist"
+        echo "command file [$jcmd] does not exist"
         exit 1
     fi
 
@@ -101,7 +113,7 @@ dump () {
 save () {
     if ! command -v "tar" &> /dev/null
     then
-        echo "tar could not be found"
+        echo "command [tar] could not be found"
         exit 1
     fi
     srpath=$1
