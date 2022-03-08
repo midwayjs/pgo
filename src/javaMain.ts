@@ -4,7 +4,7 @@ import {join} from "path";
 import {existsSync, readFile} from 'fs-extra'
 import * as YAML from 'js-yaml';
 import * as child_process from 'child_process'
-import {info} from "./common";
+import {error, info, NAS, OSS, STREAM} from "./common";
 import * as path from "path";
 
 export default class JavaStartupAccelerationComponent {
@@ -14,14 +14,8 @@ export default class JavaStartupAccelerationComponent {
   }
 
   async index(params) {
-    info('args: ' + JSON.stringify(params.argsObj));
-    const argv = require('yargs/yargs')(params.argsObj).argv;
-    if (!argv.module) {
-      throw new Error('please specify module name');
-    } else {
-      info('module name ' + argv.module);
-    }
-    let moduleName = argv.module;
+    let args = await this.parseArgs(params.argsObj);
+    let moduleName = args.moduleName;
     let fcEndpoint = await this.getFCEndpoint();
     let initializer = await this.getFunctionConfig(moduleName, 'initializer');
     let runtime = await this.getFunctionConfig(moduleName, 'runtime');
@@ -30,17 +24,61 @@ export default class JavaStartupAccelerationComponent {
     let logConfig = await this.getServiceConfig(moduleName, 'logConfig');
     const access = params?.project?.access || this.defaultAccess;
     const credential = await this.getCredential(access);
-
+    let codeUri = await this.getFunctionConfig(moduleName, 'codeUri');
     let srpath = await this.getFunctionEnvVar(moduleName, 'SRPATH');
+    srpath = this.removeStrSuffix(srpath, "/");
     let sharedDirName = path.basename(srpath);
-    if (path.dirname(srpath) != '/code') {
+
+    let downloader = args.downloader;
+    let uploader = args.uploader;
+    let ossUtilUrl, ossEndpoint;
+    if (downloader == OSS) {
+      ossUtilUrl = await this.getGlobalConfig('ossUtilUrl');
+      ossEndpoint = await this.getModulesProps(moduleName, 'ossEndpoint', false);
+    }
+
+    if (uploader != NAS && path.dirname(srpath) != '/code') {
       throw new Error('environment var SRPATH should start with /code');
     }
 
-    let codeUri = await this.getFunctionConfig(moduleName, 'codeUri');
+    let vpcConfig, nasConfig;
+    if (downloader == NAS || uploader == NAS) {
+      vpcConfig = await this.getServiceConfig(moduleName, 'vpcConfig');
+      nasConfig = await this.getServiceConfig(moduleName, 'nasConfig');
+      let fcDir = nasConfig.mountPoints[0].fcDir;
+      if (!fcDir) {
+        throw new Error("fcDir is empty, please check");
+      }
+      fcDir = this.removeStrSuffix(fcDir, "/");
+      let mountPoint = {
+        serverAddr: nasConfig.mountPoints[0].serverAddr + ":" + nasConfig.mountPoints[0].nasDir,
+        mountDir: fcDir
+      };
+      nasConfig.mountPoints = [mountPoint];
+      if (uploader == NAS) {
+        if (fcDir == srpath || srpath.indexOf(fcDir) != 0) {
+          throw new Error("SRPATH should be subdir of fcDir");
+        }
+        if (!srpath.endsWith("/runtime.data.share")) {
+          throw new Error("invalid SRPATH [" + srpath + "], should end with /runtime.data.share, for example: /mnt/nas/runtime.data.share");
+        }
+      }
+    }
+
+    let ossBucket, ossKey;
+    if (uploader == OSS) {
+      ossBucket = await this.getFunctionConfig(moduleName, 'ossBucket');
+      ossKey = await this.getFunctionConfig(moduleName, 'ossKey');
+      codeUri = 'target/artifact';
+    }
+
     if (codeUri != 'target/artifact') {
       throw new Error('codeUri should be ' + 'target/artifact');
     }
+
+    let initTimeout = args.initTimeout;
+    let timeout = args.timeout;
+    let maxMemory = args.maxMemory;
 
     const instance = new JavaStartupAcceleration(process.cwd(), {
       region,
@@ -51,7 +89,19 @@ export default class JavaStartupAccelerationComponent {
       initializer,
       credential,
       role,
-      logConfig
+      logConfig,
+      downloader,
+      uploader,
+      ossUtilUrl,
+      ossBucket,
+      ossKey,
+      ossEndpoint,
+      vpcConfig,
+      nasConfig,
+      srpath,
+      initTimeout,
+      timeout,
+      maxMemory
     });
 
     await instance.gen();
@@ -76,14 +126,29 @@ export default class JavaStartupAccelerationComponent {
     }
   }
 
-  async getModulesProps(moduleName: string, key: string) {
+  async getGlobalConfig(key: string) {
+    const yaml = await this.getConfig();
+    if (yaml) {
+      try {
+        return yaml[key];
+      } catch (e) {
+        error('read global config [' + key + '] error');
+        throw e;
+      }
+    }
+  }
+
+  async getModulesProps(moduleName: string, key: string, errorIfNotExist: boolean = true) {
     const yaml = await this.getConfig();
     if (yaml) {
       try {
         return yaml['services'][moduleName]['props'][key];
       } catch (e) {
-        console.error('read module prop [' + key + '] error');
-        throw e;
+        if (errorIfNotExist) {
+          throw e;
+        } else {
+          info('read module prop [' + key + '] error');
+        }
       }
     }
   }
@@ -94,13 +159,13 @@ export default class JavaStartupAccelerationComponent {
       try {
         return yaml['services'][moduleName]['props']['service'][key];
       } catch (e) {
-        console.error('read module config [' + key + '] error');
+        error('read module config [' + key + '] error');
         throw e;
       }
     }
   }
 
-  async getFunctionConfig(moduleName: string, key: string, errorIfNotExist: boolean = false) {
+  async getFunctionConfig(moduleName: string, key: string, errorIfNotExist: boolean = true) {
     const yaml = await this.getConfig();
 
     let value = null;
@@ -111,7 +176,7 @@ export default class JavaStartupAccelerationComponent {
         if (errorIfNotExist) {
           throw e;
         } else {
-          console.error('function config [' + key + '] does not exist:' + e.message);
+          info('function config [' + key + '] does not exist:' + e.message);
         }
       }
     }
@@ -142,5 +207,95 @@ export default class JavaStartupAccelerationComponent {
     }
 
     return await readFile(path, 'utf-8');
+  }
+
+  async parseArgs(argStr) {
+    info('pgo args: ' + argStr);
+    let args = {
+      uploader: 'stream',
+      downloader: 'stream',
+      moduleName: '',
+      initTimeout: 5 * 60,
+      timeout: 60 * 60,
+      maxMemory: 3072
+    };
+
+    const argv = require('yargs/yargs')(argStr).argv;
+
+    if (argv.module) {
+      args.moduleName = argv.module;
+    } else {
+      throw new Error('module name is required');
+    }
+
+    if (parseInt(argv.initTimeout) > 0) {
+      args.initTimeout = parseInt(argv.initTimeout);
+    }
+    if (parseInt(argv.timeout) > 0) {
+      args.timeout = parseInt(argv.timeout);
+    }
+    if (parseInt(argv.maxMemory) > 0) {
+      args.maxMemory = parseInt(argv.maxMemory);
+    }
+
+    if (argv.downloader) {
+      if (this.checkTransMethod(argv.downloader)) {
+        args.downloader = argv.downloader;
+      } else {
+        throw new Error("invalid downloader, choose one from ['oss', 'nas', 'stream']")
+      }
+    }
+
+    if (argv.uploader) {
+      if (this.checkTransMethod(argv.uploader)) {
+        args.uploader = argv.uploader;
+      } else {
+        throw new Error("invalid uploader, choose one from ['oss', 'nas', 'stream']")
+      }
+    }
+
+    this.checkTransMethodCombination(args.downloader, args.uploader);
+
+    return args;
+  }
+
+  removeStrSuffix(str: string, suffix: string) {
+    if (!str) {
+      return str;
+    }
+    if (str.endsWith(suffix)) {
+      return str.substring(0, suffix.lastIndexOf(suffix));
+    } else {
+      return str;
+    }
+  }
+
+  checkTransMethod(method: string) {
+    return method == STREAM || method == OSS || method == NAS;
+  }
+
+  /*
+   * +------------+------------+-----------------+
+   * | downloader | uploader   |      remark     |
+   * +------------+------------+ ----------------+
+   * | oss,       | stream     |  recommended    |
+   * +------------+------------+ ----------------+
+   * | nas,       | stream     |  recommended    |
+   * +------------+------------+ ----------------+
+   * | oss,       | oss        |  recommended    |
+   * +-------------------------+ ----------------+
+   * | nas,       | nas        |     tested      |
+   * +------------+------------+ ----------------+
+   * | stream,    | stream     | not recommended |
+   * +------------+------------+ ----------------+
+   * | nas,       | oss        |   unsupported   |
+   * +------------+------------+ ----------------+
+   */
+  checkTransMethodCombination(downloader: string, uploader: string) {
+    info("use [" + downloader + "] to download acceleration files to local")
+    info("use [" + uploader + "] to upload acceleration files to fc prod")
+    if (downloader == NAS && uploader == OSS) {
+      throw new Error("the combination is unsupported: downloader [" + downloader + "], uploader [" + uploader + "]")
+    }
   }
 }

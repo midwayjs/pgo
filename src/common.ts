@@ -1,3 +1,7 @@
+export const OSS = 'oss';
+export const NAS = 'nas';
+export const STREAM = 'stream';
+
 const prefix = '[acceleration adapter] ';
 
 export function info(msg: string) {
