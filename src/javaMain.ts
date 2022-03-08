@@ -76,6 +76,10 @@ export default class JavaStartupAccelerationComponent {
       throw new Error('codeUri should be ' + 'target/artifact');
     }
 
+    let initTimeout = args.initTimeout;
+    let timeout = args.timeout;
+    let maxMemory = args.maxMemory;
+
     const instance = new JavaStartupAcceleration(process.cwd(), {
       region,
       fcEndpoint,
@@ -94,7 +98,10 @@ export default class JavaStartupAccelerationComponent {
       ossEndpoint,
       vpcConfig,
       nasConfig,
-      srpath
+      srpath,
+      initTimeout,
+      timeout,
+      maxMemory
     });
 
     await instance.gen();
@@ -208,15 +215,28 @@ export default class JavaStartupAccelerationComponent {
       uploader: 'stream',
       downloader: 'stream',
       moduleName: '',
+      initTimeout: 5 * 60,
+      timeout: 60 * 60,
+      maxMemory: 3072
     };
 
     const argv = require('yargs/yargs')(argStr).argv;
+
     if (argv.module) {
       args.moduleName = argv.module;
     } else {
       throw new Error('module name is required');
     }
 
+    if (parseInt(argv.initTimeout) > 0) {
+      args.initTimeout = parseInt(argv.initTimeout);
+    }
+    if (parseInt(argv.timeout) > 0) {
+      args.timeout = parseInt(argv.timeout);
+    }
+    if (parseInt(argv.maxMemory) > 0) {
+      args.maxMemory = parseInt(argv.maxMemory);
+    }
 
     if (argv.downloader) {
       if (this.checkTransMethod(argv.downloader)) {

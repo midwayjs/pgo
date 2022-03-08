@@ -68,10 +68,14 @@ export class JavaStartupAcceleration {
   ossKey;
   vpcConfig;
   nasConfig;
+  timeout;
+  initTimeout;
+  maxMemory;
 
   constructor(pwd: string, config) {
     const { region, fcEndpoint, access, runtime, initializer, credential, role, logConfig, sharedDirName, downloader,
-      uploader, ossUtilUrl, ossBucket, ossKey, ossEndpoint, vpcConfig, nasConfig, srpath } = config;
+      uploader, ossUtilUrl, ossBucket, ossKey, ossEndpoint, vpcConfig, nasConfig, srpath, maxMemory, timeout,
+      initTimeout } = config;
     this.region = region;
     this.runtime = runtime;
     this.initializer = initializer;
@@ -103,6 +107,9 @@ export class JavaStartupAcceleration {
     } else {
       this.srpath = SRPATH;
     }
+    this.maxMemory = maxMemory;
+    this.timeout = timeout;
+    this.initTimeout = initTimeout;
   }
 
   public async gen() {
@@ -212,10 +219,10 @@ export class JavaStartupAcceleration {
       functionName: tmpFunctionName,
       handler: TEMP_FUNCTION_HANDLER,
       initializer: this.initializer,
-      memorySize: 1024,
+      memorySize: this.maxMemory,
       runtime: this.runtime,
-      timeout: 60,
-      initializationTimeout: 60,
+      timeout: this.timeout, // unit second
+      initializationTimeout: this.initTimeout, // unit second
       environmentVariables: {
         DISABLE_JAVA11_QUICKSTART: 'true',
         BOOTSTRAP_WRAPPER: '/code/quickstart.sh',
@@ -256,6 +263,7 @@ export class JavaStartupAcceleration {
       endpoint: this.fcEndpoint,
       accessKeyID: ak,
       accessKeySecret: secret,
+      timeout: this.timeout * 1000 // unit millisecond
     });
     return fcClient;
   }
