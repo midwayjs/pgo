@@ -21,7 +21,7 @@ import * as YAML from 'js-yaml';
 import * as uuid from 'uuid-1345';
 import * as tar from 'tar';
 import * as child_process from 'child_process'
-import {error, info, NAS, OSS} from "./common";
+import {error, info, NAS, OSS, OSS_UTIL_URL, QUICK_START} from "./common";
 import * as path from "path";
 import * as OSSClient from 'ali-oss';
 import got from 'got';
@@ -59,6 +59,7 @@ export class JavaStartupAcceleration {
   role;
   logConfig;
   sharedDirName;
+  tmpSrpath;
   srpath;
   downloader;
   uploader;
@@ -71,11 +72,16 @@ export class JavaStartupAcceleration {
   timeout;
   initTimeout;
   maxMemory;
+  tmpBucketName;
+  enable;
+  serviceName;
+  functionName;
+  funcEnvVars;
 
   constructor(pwd: string, config) {
     const { region, fcEndpoint, access, runtime, initializer, credential, role, logConfig, sharedDirName, downloader,
       uploader, ossUtilUrl, ossBucket, ossKey, ossEndpoint, vpcConfig, nasConfig, srpath, maxMemory, timeout,
-      initTimeout } = config;
+      initTimeout, enable, serviceName, functionName, funcEnvVars } = config;
     this.region = region;
     this.runtime = runtime;
     this.initializer = initializer;
@@ -88,14 +94,20 @@ export class JavaStartupAcceleration {
     this.logConfig = logConfig;
     this.fcEndpoint = fcEndpoint;
     this.sharedDirName = sharedDirName;
-    this.srpath = join(TMP_PATH, sharedDirName);
+    this.tmpSrpath = join(TMP_PATH, sharedDirName);
+    this.srpath = srpath;
     this.downloader = downloader;
     if (ossEndpoint) {
       this.ossEndpoint = ossEndpoint;
     } else {
       this.ossEndpoint = 'oss-${FC_REGION}-internal.aliyuncs.com'.replace('${FC_REGION}', this.region);
     }
-    this.ossUtilUrl = ossUtilUrl;
+    if (ossUtilUrl) {
+      this.ossUtilUrl = ossUtilUrl;
+    } else {
+      this.ossUtilUrl = OSS_UTIL_URL;
+    }
+
     this.uploader = uploader;
     this.ossBucket = ossBucket;
     this.ossKey = ossKey;
@@ -103,23 +115,56 @@ export class JavaStartupAcceleration {
     this.nasConfig = nasConfig;
 
     if (this.uploader == NAS) {
-      this.srpath = srpath;
+      this.tmpSrpath = srpath;
     } else {
-      this.srpath = SRPATH;
+      this.tmpSrpath = SRPATH;
     }
     this.maxMemory = maxMemory;
     this.timeout = timeout;
     this.initTimeout = initTimeout;
+    this.tmpBucketName = `tmp-acceleration-${uuid.v1()}`;
+    this.enable = enable;
+    this.serviceName = serviceName;
+    this.functionName = functionName;
+    this.funcEnvVars = funcEnvVars;
   }
 
   public async gen() {
-    info("acceleration function shared dir: " + this.srpath);
+    if (this.enable) {
+      await this.enableQuickStart();
+      info("quickstart enabled");
+      return;
+    }
+    info("acceleration function shared dir: " + this.tmpSrpath);
     info("local temp dir: " + tmpDir);
+    info("use [" + this.downloader + "] to download acceleration files to local")
+    info("use [" + this.uploader + "] to upload acceleration files to fc production")
     if (this.downloader == OSS) {
       info("oss endpoint: " + this.ossEndpoint)
     }
     await this.genDump();
     info("completed");
+  }
+
+  async enableQuickStart() {
+    info("function environment variables:" + JSON.stringify(this.funcEnvVars));
+    if (this.funcEnvVars) {
+      this.funcEnvVars['BOOTSTRAP_WRAPPER'] = QUICK_START;
+      this.funcEnvVars['SRPATH'] = this.srpath;
+    } else {
+      this.funcEnvVars = {
+        'BOOTSTRAP_WRAPPER': QUICK_START,
+        'SRPATH': this.srpath
+      }
+    }
+    const client = await this.getFCClient();
+    let res = await client.updateFunction(
+        this.serviceName,
+        this.functionName,
+        {
+          environmentVariables: this.funcEnvVars,
+        });
+    info('update function result: ' + JSON.stringify(res));
   }
 
   async genDump() {
@@ -159,6 +204,8 @@ export class JavaStartupAcceleration {
       if (this.uploader == OSS) {
         await this.createZipAndUploadToOSS();
       }
+    } catch (e) {
+      error(e.message);
     } finally {
       /* delete local temp files */
       await remove(tmpDir);
@@ -176,13 +223,24 @@ export class JavaStartupAcceleration {
 
     if (this.uploader == NAS) {
       archiveFile = '';
-      let command = 's nas command rm -rf ' + this.srpath;
+      let command = 's nas command rm -rf ' + this.tmpSrpath;
       info("clear srctl path before invoking assistant function: [" + command + "]");
       child_process.execSync(command);
     }
 
     info("invoking assistant function to dump acceleration files");
-    let body = 'srpath=' + this.srpath + ';type=dump;file=' + archiveFile + ";method=jcmd";
+    let body = 'srpath=' + this.tmpSrpath + ';type=dump;file=' + archiveFile + ";method=jcmd";
+    if (this.downloader == OSS) {
+      const {ak, secret } = await this.getConfig();
+      body += ';accessKeyId=' + ak + ';' +
+          'accessKeySecret=' + secret + ';' +
+          'endpoint=' + this.ossEndpoint + ';' +
+          'bucket=' + this.tmpBucketName;
+    } else if (this.downloader == NAS && this.uploader != NAS) {
+      let nasFilePath = join(this.nasConfig.mountPoints[0].mountDir, ARCHIVE_NAME);
+      body += ';nasFilePath=' + nasFilePath + ';';
+    }
+
     let result = await fcClient.post(`/proxy/${tmpServiceName}/${tmpFunctionName}/action`, body, null);
     let data = result.data;
     info("server messages: " + data)
@@ -198,10 +256,9 @@ export class JavaStartupAcceleration {
     await ensureDir(sharedDir);
     let localFile = join(sharedDir, ARCHIVE_NAME);
     if (this.downloader == OSS) {
-      const {ak, secret } = await this.getConfig();
-      await this.downloadByOSS(fcClient, tmpServiceName, tmpFunctionName, ak, secret, this.ossEndpoint, localFile);
+      await this.downloadByOSS(localFile);
     } else if (this.downloader == NAS) {
-      await this.downloadByNAS(fcClient, tmpServiceName, tmpFunctionName, localFile);
+      await this.downloadByNAS(localFile);
     } else {
       await JavaStartupAcceleration.download(fcClient, tmpServiceName, tmpFunctionName, localFile);
     }
@@ -225,8 +282,8 @@ export class JavaStartupAcceleration {
       initializationTimeout: this.initTimeout, // unit second
       environmentVariables: {
         DISABLE_JAVA11_QUICKSTART: 'true',
-        BOOTSTRAP_WRAPPER: '/code/quickstart.sh',
-        SRPATH: this.srpath
+        BOOTSTRAP_WRAPPER: QUICK_START,
+        SRPATH: this.tmpSrpath
       }
     });
     info("assistant function created")
@@ -411,25 +468,8 @@ export class JavaStartupAcceleration {
     return true;
   }
 
-  private async downloadByOSS(fcClient, tmpServiceName: string, tmpFunctionName: string,
-                              accessKeyId: string, accessKeySecret: string, endpoint: string, localFile: string) {
-    const bucketName = `tmp-acceleration-${uuid.v1()}`;
-    const payload =
-        'type=ossUpload;' +
-        'file=' + ARCHIVE_PATH + ';' +
-        'accessKeyId=' + accessKeyId + ';' +
-        'accessKeySecret=' + accessKeySecret + ';' +
-        'endpoint=' + endpoint + ';' +
-        'bucket=' + bucketName
-    let result = await fcClient.post(`/proxy/${tmpServiceName}/${tmpFunctionName}/action`, payload, null);
-    let data = result.data;
-    info("oss upload result: " + data);
-
-    if (data.indexOf('success') != 0) {
-      throw new Error("upload acceleration file to oss error");
-    }
-
-    let client = await this.getOSSClient(bucketName);
+  private async downloadByOSS(localFile: string) {
+    let client = await this.getOSSClient(this.tmpBucketName);
 
     try {
       await client.get(ARCHIVE_NAME, localFile);
@@ -440,28 +480,19 @@ export class JavaStartupAcceleration {
 
       let list = await client.list();
       if (list.length > 0) {
-        throw new Error('oss bucket [' + bucketName + '] is not empty');
+        throw new Error('oss bucket [' + this.tmpBucketName + '] is not empty');
       }
 
-      await client.deleteBucket(bucketName);
-      info('oss bucket [' + bucketName + '] deleted');
+      await client.deleteBucket(this.tmpBucketName);
+      info('oss bucket [' + this.tmpBucketName + '] deleted');
     } catch (e) {
       error('oss operation error:' + e.message);
       throw e;
     }
   }
 
-  private async downloadByNAS(fcClient, tmpServiceName: string, tmpFunctionName: string, localFile: string) {
+  private async downloadByNAS(localFile: string) {
     let nasFilePath = join(this.nasConfig.mountPoints[0].mountDir, ARCHIVE_NAME);
-    const payload = 'type=nasUpload;file=' + ARCHIVE_PATH + ';nasFilePath=' + nasFilePath;
-    let result = await fcClient.post(`/proxy/${tmpServiceName}/${tmpFunctionName}/action`, payload, null);
-    let data = result.data;
-    info("nas upload result: " + data);
-
-    if (data.indexOf('success') != 0) {
-      throw new Error("upload acceleration file to nas error: " + data);
-    }
-
     if (existsSync(localFile)) {
       info('before download from nas, remove existing file [' + localFile + ']')
       await remove(localFile);

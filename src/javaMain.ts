@@ -1,11 +1,11 @@
 import * as core from '@serverless-devs/core';
 import {JavaStartupAcceleration} from './javaIndex';
+import * as path from "path";
 import {join} from "path";
 import {existsSync, readFile} from 'fs-extra'
 import * as YAML from 'js-yaml';
 import * as child_process from 'child_process'
-import {error, info, NAS, OSS, STREAM} from "./common";
-import * as path from "path";
+import {ARTIFACT_DIR, error, info, NAS, OSS, SRPATH, STREAM} from "./common";
 
 export default class JavaStartupAccelerationComponent {
   defaultAccess = 'default';
@@ -16,6 +16,8 @@ export default class JavaStartupAccelerationComponent {
   async index(params) {
     let args = await this.parseArgs(params.argsObj);
     let moduleName = args.moduleName;
+    let serviceName = await this.getServiceConfig(moduleName, 'name');
+    let functionName = await this.getFunctionConfig(moduleName, 'name');
     let fcEndpoint = await this.getFCEndpoint();
     let initializer = await this.getFunctionConfig(moduleName, 'initializer');
     let runtime = await this.getFunctionConfig(moduleName, 'runtime');
@@ -26,6 +28,9 @@ export default class JavaStartupAccelerationComponent {
     const credential = await this.getCredential(access);
     let codeUri = await this.getFunctionConfig(moduleName, 'codeUri');
     let srpath = await this.getFunctionEnvVar(moduleName, 'SRPATH');
+    if (!srpath) {
+      srpath = SRPATH;
+    }
     srpath = this.removeStrSuffix(srpath, "/");
     let sharedDirName = path.basename(srpath);
 
@@ -37,7 +42,8 @@ export default class JavaStartupAccelerationComponent {
       ossEndpoint = await this.getModulesProps(moduleName, 'ossEndpoint', false);
     }
 
-    if (uploader != NAS && path.dirname(srpath) != '/code') {
+    let enable = args.enable;
+    if (!enable && uploader != NAS && path.dirname(srpath) != '/code') {
       throw new Error('environment var SRPATH should start with /code');
     }
 
@@ -69,17 +75,19 @@ export default class JavaStartupAccelerationComponent {
     if (uploader == OSS) {
       ossBucket = await this.getFunctionConfig(moduleName, 'ossBucket');
       ossKey = await this.getFunctionConfig(moduleName, 'ossKey');
-      codeUri = 'target/artifact';
+      codeUri = ARTIFACT_DIR;
     }
 
-    if (codeUri != 'target/artifact') {
-      throw new Error('codeUri should be ' + 'target/artifact');
+    if (!enable) {
+      if (codeUri != ARTIFACT_DIR) {
+        throw new Error('codeUri should be ' + ARTIFACT_DIR);
+      }
     }
 
     let initTimeout = args.initTimeout;
     let timeout = args.timeout;
     let maxMemory = args.maxMemory;
-
+    let funcEnvVars = await this.getFunctionEnvVars(moduleName);
     const instance = new JavaStartupAcceleration(process.cwd(), {
       region,
       fcEndpoint,
@@ -101,7 +109,11 @@ export default class JavaStartupAccelerationComponent {
       srpath,
       initTimeout,
       timeout,
-      maxMemory
+      maxMemory,
+      enable,
+      serviceName,
+      functionName,
+      funcEnvVars
     });
 
     await instance.gen();
@@ -185,13 +197,18 @@ export default class JavaStartupAccelerationComponent {
   }
 
   async getFunctionEnvVar(moduleName: string, name: string) {
-    const environmentVariables = await this.getFunctionConfig(moduleName, "environmentVariables", true);
+    const environmentVariables = await this.getFunctionConfig(moduleName, "environmentVariables", false);
 
-    if (environmentVariables[name]) {
+    if (environmentVariables && environmentVariables[name]) {
       return environmentVariables[name];
     } else {
-      throw new Error("function has no environment variable: " + name);
+      error("function has no environment variable: " + name);
+      return null;
     }
+  }
+
+  async getFunctionEnvVars(moduleName: string) {
+    return await this.getFunctionConfig(moduleName, "environmentVariables", false);
   }
 
   async getConfig() {
@@ -213,14 +230,19 @@ export default class JavaStartupAccelerationComponent {
     info('pgo args: ' + argStr);
     let args = {
       uploader: 'stream',
-      downloader: 'stream',
+      downloader: 'oss',
       moduleName: '',
       initTimeout: 5 * 60,
       timeout: 60 * 60,
-      maxMemory: 3072
+      maxMemory: 3072,
+      enable: false
     };
 
     const argv = require('yargs/yargs')(argStr).argv;
+
+    if (argv.enable) {
+      args.enable = true;
+    }
 
     if (argv.module) {
       args.moduleName = argv.module;
@@ -292,8 +314,6 @@ export default class JavaStartupAccelerationComponent {
    * +------------+------------+ ----------------+
    */
   checkTransMethodCombination(downloader: string, uploader: string) {
-    info("use [" + downloader + "] to download acceleration files to local")
-    info("use [" + uploader + "] to upload acceleration files to fc prod")
     if (downloader == NAS && uploader == OSS) {
       throw new Error("the combination is unsupported: downloader [" + downloader + "], uploader [" + uploader + "]")
     }
