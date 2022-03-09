@@ -25,8 +25,6 @@ public class AccelerationHelper implements HttpRequestHandler {
     private static final String QUICKSTART = "/code/quickstart.sh";
     private static final String DUMP = "dump";
     private static final String SIZE = "size";
-    private static final String OSS_UPLOAD = "ossUpload";
-    private static final String NAS_UPLOAD = "nasUpload";
     private static final String KEY_NAS_FILEPATH = "nasFilePath";
 
     private static final String OSSUTIL64 = "/code/ossutil64";
@@ -62,30 +60,27 @@ public class AccelerationHelper implements HttpRequestHandler {
         if (DUMP.equals(map.get(KEY_TYPE))) {
             String srpath = map.get(KEY_SRPATH);
             data = dumpByJcmd(srpath, filePath);
+            if (map.containsKey(KEY_BUCKET)) {
+                String accessKeyId = map.get(KEY_ACCESS_KEY_ID);
+                String accessKeySecret = map.get(KEY_ACCESS_KEY_SECRET);
+                String endpoint = map.get(KEY_ENDPOINT);
+                String bucket = map.get(KEY_BUCKET);
+                try {
+                    return doOSSUpload(filePath, accessKeyId, accessKeySecret, endpoint, bucket);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    return e.getMessage();
+                }
+            } else if (map.containsKey(KEY_NAS_FILEPATH)) {
+                String nasFilePath = map.get(KEY_NAS_FILEPATH);
+                try {
+                    return doNASUpload(filePath, nasFilePath);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    return e.getMessage();
+                }
+            }
             return data;
-        }
-
-        if (OSS_UPLOAD.equals(map.get(KEY_TYPE))) {
-            String accessKeyId = map.get(KEY_ACCESS_KEY_ID);
-            String accessKeySecret = map.get(KEY_ACCESS_KEY_SECRET);
-            String endpoint = map.get(KEY_ENDPOINT);
-            String bucket = map.get(KEY_BUCKET);
-            try {
-                return doOSSUpload(filePath, accessKeyId, accessKeySecret, endpoint, bucket);
-            } catch (Exception e) {
-                e.printStackTrace();
-                return e.getMessage();
-            }
-        }
-
-        if (NAS_UPLOAD.equals(map.get(KEY_TYPE))) {
-            String nasFilePath = map.get(KEY_NAS_FILEPATH);
-            try {
-                return doNASUpload(filePath, nasFilePath);
-            } catch (Exception e) {
-                e.printStackTrace();
-                return e.getMessage();
-            }
         }
 
         File file = new File(filePath);
