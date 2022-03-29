@@ -206,6 +206,8 @@ export class JavaStartupAcceleration {
       }
     } catch (e) {
       error(e.message);
+      error(e.stderr.toString());
+      error(e.stdout.toString());
     } finally {
       /* delete local temp files */
       await remove(tmpDir);

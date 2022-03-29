@@ -28,7 +28,7 @@ AppCDS技术对于Custom Class Loader加载的类优化效果并不明显。为�
 ## 如何使用？
 目前 本工具 与 [Serverless Devs](https://www.serverless-devs.com/zh-cn) 实现了集成，可以通过 Serverless Devs 的 `s cli` 直接使用，具体步骤如下：
 
-1. 在 `s.yaml` 中的 service actions 中添加 `pre-deploy` ，配置 run 命令为 `s cli pgo --lang=java --module=helloworld`。
+1. 在 `s.yaml` 中的 service actions 中添加 `pre-deploy` ，配置 run 命令为 `s cli pgo gen --lang=java --module=helloworld`。
 ![](https://img.alicdn.com/imgextra/i4/O1CN01kCaJUg27jZ7j5Gv4x_!!6000000007833-0-tps-964-1171.jpg)
 
 2. 在 `s.yaml` 中的function的配置中增加2个环境变量，这两个变量的名字和值是固定的，请不要修改：
@@ -36,13 +36,18 @@ AppCDS技术对于Custom Class Loader加载的类优化效果并不明显。为�
 - SRPATH: '/code/runtime.data.share'
 ![](https://img.alicdn.com/imgextra/i1/O1CN018MFK1C1dI8w7IUIjg_!!6000000003712-0-tps-926-1168.jpg)
 
-3. 将 `s.yaml` 中的 runtime 改为 `java11`
-![](https://img.alicdn.com/imgextra/i4/O1CN010lxGXP1aYDzsuc2Lq_!!6000000003341-0-tps-949-1169.jpg)
+3. 将 `s.yaml` 中的 runtime 改为 `java11`，并且修改codeUri为固定值target/artifact
+![](https://img.alicdn.com/imgextra/i1/O1CN0188jlpL21EWajOK0e2_!!6000000006953-0-tps-945-1167.jpg)
 
 4. 在 `s.yaml` 中为`service`配置logConfig和role，便于把函数产生的日志发送到您的SLS Logstore中
    ![](https://img.alicdn.com/imgextra/i2/O1CN018orbW21GA8r623ARX_!!6000000000581-0-tps-942-1176.jpg)
 
-5. 部署函数
+5. 部署函数  
+如果您执行过s build，则部署时（s deploy）会优先使用s build的产物，这些产物存放在项目根目录下的.s目录。由于我们在上文中配置了codeUri为target/artifact，所以为了让s deploy读取到target/artifact目录中的文件，必须删除掉.s目录中文件和文件夹。如果您没有执行过s build，则无需执行下面的删除命令。
+```shell
+rm -rf .s/*
+```
+执行部署命令
 ```shell
 s deploy
 ```
