@@ -60,6 +60,57 @@ curl 'curl http://135******1392103.cn-shanghai.fc.aliyuncs.com/2016-08-15/proxy/
 s cli fc-api invokeFunction --serviceName hello-world-service --functionName http-trigger-java11-springboot --event '{}'
 ```
 
+7. 附带一个完整的yaml文件，您可以用此文件快速开始
+```yaml
+edition: 1.0.0
+name: hello-world-app
+access: "default"
+
+vars:
+   service:
+
+services:
+   helloworld:
+      component: fc
+      actions:
+         pre-deploy:
+            - run: s cli pgo gen --lang=java --module=helloworld --downloader=oss
+         post-deploy:
+            - run: s cli pgo gen --lang=java --module=helloworld --enable
+      props:
+         region: cn-hongkong
+         service:
+            name: springboot-hello-world-service
+            logConfig:
+               project: fc-project-yibo-hongkong
+               logstore: fc-logstore-hongkong
+               enableRequestMetrics: true
+               enableInstanceMetrics: true
+               logBeginRule: DefaultRegex
+            role: acs:ram::1351XXXXXX39XXX3:role/AliyunFCDefaultRole
+         function:
+            name: http-trigger-springboot-demo
+            instanceType: c1
+            description: 'hello world by serverless devs'
+            runtime: java11
+            codeUri: target/artifact
+            handler: com.example.demo.DemoApplication::handleRequest
+            memorySize: 8192
+            timeout: 60
+            initializationTimeout: 60
+            initializer: com.example.demo.DemoApplication::initialize
+            environmentVariables:
+
+         triggers:
+            - name: httpTrigger
+              type: http
+              config:
+                 authType: anonymous
+                 methods:
+                    - GET
+                    - POST
+```
+
 ---
 
 Alibaba JVM 团队
