@@ -2,8 +2,7 @@ import * as core from '@serverless-devs/core';
 import { PGO } from './index';
 import * as minimist from 'minimist';
 import JavaStartupAccelerationComponent from "./javaMain";
-// import * as YAML from 'js-yaml';
-// import { join } from 'path';
+
 export default class PGOComponent {
   defaultAccess = 'default';
   constructor(params: any = {}) {

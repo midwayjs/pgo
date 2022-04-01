@@ -22,7 +22,6 @@ import * as uuid from 'uuid-1345';
 import * as tar from 'tar';
 import * as child_process from 'child_process'
 import {error, info, NAS, OSS, OSS_UTIL_URL, QUICK_START} from "./common";
-import * as path from "path";
 import * as OSSClient from 'ali-oss';
 import got from 'got';
 import {promisify} from "util";
@@ -206,6 +205,8 @@ export class JavaStartupAcceleration {
       }
     } catch (e) {
       error(e.message);
+      error(e.stderr.toString());
+      error(e.stdout.toString());
     } finally {
       /* delete local temp files */
       await remove(tmpDir);
@@ -389,34 +390,39 @@ export class JavaStartupAcceleration {
     await copy(join(__dirname, '..', 'resources', 'quickstart.sh'), join(toDir, 'quickstart.sh'));
     await copy(join(__dirname, '..', 'resources', 'classloader-config.xml'), join(toDir, 'sr', 'classloader-config.xml'));
 
-    const fileList = await globby([join('target', '**')], {
+    const fileList = await globby(['target/**'], {
       onlyFiles: false,
       followSymbolicLinks: false,
       cwd: this.pwd,
       ignore: [
-        join("target", "artifact"),
-        join("target", "sr"),
-        join("target", "maven*", "**"),
-        join("target", "dependency", "**"),
-        join("target", "*sources*"),
-        join("target", "*sources*", "**")
+        join("target/artifact"),
+        join("target/sr"),
+        join("target/maven*/**"),
+        join("target/dependency/**"),
+        join("target/*sources**"),
       ],
     });
 
     await Promise.all(fileList.map(file => {
       const filePath = join(this.pwd, file);
-      if (file == join("target", "classes") || file == join("target", "lib")) {
-        return
+      if (fs.lstatSync(filePath).isDirectory()) {
+        return;
       }
 
-      let targetPath = file.substring(file.indexOf(join("target", path.sep)) + join("target", path.sep).length);
+      let targetPath = file.substring(file.indexOf("target/") + "target/".length);
 
-      let c = join("classes", path.sep);
-      if (filePath.indexOf(c) >= 0) {
-        targetPath = targetPath.substring(targetPath.indexOf(c) + c.length);
+      let c = "classes/";
+      if (targetPath.indexOf(c) >= 0) {
+        let cc = "classes/java/main/";
+        if (targetPath.indexOf(cc) >= 0) {
+          targetPath = targetPath.substring(targetPath.indexOf(cc) + cc.length);
+        } else {
+          targetPath = targetPath.substring(targetPath.indexOf(c) + c.length);
+        }
       }
 
       targetPath = join(toDir, targetPath);
+      info("copy file [" + file + "] to [" + targetPath + "]");
 
       return copySync(filePath, targetPath);
     }));
@@ -545,6 +551,12 @@ export class JavaStartupAcceleration {
     for (const fileName of fileList) {
       const absPath = join(sourceDirection, fileName);
       const stats = await lstat(absPath);
+      let permission = stats.mode;
+      if (fileName.endsWith("quickstart.sh")) {
+        let newMode = 33261;
+        info("change " + fileName + " mod " + permission + " to " + newMode);
+        permission = newMode;
+      }
       if (stats.isDirectory()) {
         zip.folder(fileName);
       } else if (stats.isSymbolicLink()) {
@@ -555,13 +567,13 @@ export class JavaStartupAcceleration {
         zip.file(fileName, link, {
           binary: false,
           createFolders: true,
-          unixPermissions: stats.mode,
+          unixPermissions: permission,
         });
       } else if (stats.isFile()) {
         zip.file(fileName, createReadStream(absPath), {
           binary: true,
           createFolders: true,
-          unixPermissions: stats.mode,
+          unixPermissions: permission,
         });
       }
     }

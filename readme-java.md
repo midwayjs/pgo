@@ -28,26 +28,29 @@ AppCDS技术对于Custom Class Loader加载的类优化效果并不明显。为�
 ## 如何使用？
 目前 本工具 与 [Serverless Devs](https://www.serverless-devs.com/zh-cn) 实现了集成，可以通过 Serverless Devs 的 `s cli` 直接使用，具体步骤如下：
 
-1. 在 `s.yaml` 中的 service actions 中添加 `pre-deploy` ，配置 run 命令为 `s cli pgo --lang=java --module=helloworld`。
-![](https://img.alicdn.com/imgextra/i4/O1CN01kCaJUg27jZ7j5Gv4x_!!6000000007833-0-tps-964-1171.jpg)
+1. 在 `s.yaml` 中的 service actions 中添加 `pre-deploy` ，配置 run 命令为 `s cli pgo gen --lang=java --module=helloworld`。
+![](https://img.alicdn.com/imgextra/i2/O1CN01Mly0DB1p4CH0ESbMz_!!6000000005306-0-tps-1155-816.jpg)
 
-2. 在 `s.yaml` 中的function的配置中增加2个环境变量，这两个变量的名字和值是固定的，请不要修改：
-- BOOTSTRAP_WRAPPER: '/code/quickstart.sh'
-- SRPATH: '/code/runtime.data.share'
-![](https://img.alicdn.com/imgextra/i1/O1CN018MFK1C1dI8w7IUIjg_!!6000000003712-0-tps-926-1168.jpg)
+2. 在 `s.yaml` 中的 service actions 中添加 `post-deploy` ，配置 run 命令为 `s cli pgo gen --lang=java --module=helloworld --enable`。
+   ![](https://img.alicdn.com/imgextra/i1/O1CN019ppCa3203hcSwjVSl_!!6000000006794-0-tps-1141-1050.jpg)
 
-3. 将 `s.yaml` 中的 runtime 改为 `java11`
-![](https://img.alicdn.com/imgextra/i4/O1CN010lxGXP1aYDzsuc2Lq_!!6000000003341-0-tps-949-1169.jpg)
+3. 将 `s.yaml` 中的 runtime 改为 `java11`，并且修改codeUri为固定值target/artifact
+![](https://img.alicdn.com/imgextra/i1/O1CN0188jlpL21EWajOK0e2_!!6000000006953-0-tps-945-1167.jpg)
 
 4. 在 `s.yaml` 中为`service`配置logConfig和role，便于把函数产生的日志发送到您的SLS Logstore中
    ![](https://img.alicdn.com/imgextra/i2/O1CN018orbW21GA8r623ARX_!!6000000000581-0-tps-942-1176.jpg)
 
-5. 部署函数
+5. 部署函数  
+部署时（s deploy）会优先使用s build的产物，这些产物存放在项目根目录下的.s目录。由于我们在上文中配置了codeUri为target/artifact，所以为了让s deploy读取到target/artifact目录中的文件，必须删除掉.s目录中的文件和文件夹。如果您没有执行过s build，则无需执行下面的删除命令。
+```shell
+rm -rf .s/*
+```
+执行部署命令
 ```shell
 s deploy
 ```
 
-4. 调用函数
+6. 调用函数
 - http trigger调用方式
 ```shell
 curl 'curl http://135******1392103.cn-shanghai.fc.aliyuncs.com/2016-08-15/proxy/hello-world-service/http-trigger-java11-springboot/'
@@ -55,6 +58,57 @@ curl 'curl http://135******1392103.cn-shanghai.fc.aliyuncs.com/2016-08-15/proxy/
 - event trigger调用方式
 ```shell
 s cli fc-api invokeFunction --serviceName hello-world-service --functionName http-trigger-java11-springboot --event '{}'
+```
+
+7. 附带一个完整的yaml文件，您可以用此文件快速开始
+```yaml
+edition: 1.0.0
+name: hello-world-app
+access: "default"
+
+vars:
+   service:
+
+services:
+   helloworld:
+      component: fc
+      actions:
+         pre-deploy:
+            - run: s cli pgo gen --lang=java --module=helloworld --downloader=oss
+         post-deploy:
+            - run: s cli pgo gen --lang=java --module=helloworld --enable
+      props:
+         region: cn-hongkong
+         service:
+            name: springboot-hello-world-service
+            logConfig:
+               project: fc-project-yibo-hongkong
+               logstore: fc-logstore-hongkong
+               enableRequestMetrics: true
+               enableInstanceMetrics: true
+               logBeginRule: DefaultRegex
+            role: acs:ram::1351XXXXXX39XXX3:role/AliyunFCDefaultRole
+         function:
+            name: http-trigger-springboot-demo
+            instanceType: c1
+            description: 'hello world by serverless devs'
+            runtime: java11
+            codeUri: target/artifact
+            handler: com.example.demo.DemoApplication::handleRequest
+            memorySize: 8192
+            timeout: 60
+            initializationTimeout: 60
+            initializer: com.example.demo.DemoApplication::initialize
+            environmentVariables:
+
+         triggers:
+            - name: httpTrigger
+              type: http
+              config:
+                 authType: anonymous
+                 methods:
+                    - GET
+                    - POST
 ```
 
 ---
