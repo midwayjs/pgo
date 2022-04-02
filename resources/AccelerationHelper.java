@@ -174,7 +174,7 @@ public class AccelerationHelper implements HttpRequestHandler {
                 String.format("upload file %s to oss [%s] error\n", filePath, ossFilePath));
 
         doCmd(new String[] {TMP_OSSUTIL64, "stat", ossFilePath, "-e", endpoint, "-i", accessKeyId, "-k", accessKeySecret},
-                String.format("stat oss file %s error\n", ossFilePath),
+                String.format("stat oss file %s success\n", ossFilePath),
                 String.format("stat oss file %s error\n", ossFilePath));
 
         return SUCCESS;

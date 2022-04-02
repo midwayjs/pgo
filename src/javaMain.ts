@@ -15,6 +15,12 @@ export default class JavaStartupAccelerationComponent {
 
   async index(params) {
     let args = await this.parseArgs(params.argsObj);
+    let debug = args.debug;
+    if (debug) {
+      info("index args: " + JSON.stringify(params));
+    }
+    info("parsed args: " + JSON.stringify(args));
+
     let moduleName = args.moduleName;
     let serviceName = await this.getServiceConfig(moduleName, 'name');
     let functionName = await this.getFunctionConfig(moduleName, 'name');
@@ -87,6 +93,8 @@ export default class JavaStartupAccelerationComponent {
     let initTimeout = args.initTimeout;
     let timeout = args.timeout;
     let maxMemory = args.maxMemory;
+    let instanceType = args.instanceType;
+    let features = args.features;
     let funcEnvVars = await this.getFunctionEnvVars(moduleName);
     const instance = new JavaStartupAcceleration(process.cwd(), {
       region,
@@ -110,10 +118,13 @@ export default class JavaStartupAccelerationComponent {
       initTimeout,
       timeout,
       maxMemory,
+      instanceType,
       enable,
       serviceName,
       functionName,
-      funcEnvVars
+      funcEnvVars,
+      features,
+      debug
     });
 
     await instance.gen();
@@ -234,14 +245,25 @@ export default class JavaStartupAccelerationComponent {
       moduleName: '',
       initTimeout: 5 * 60,
       timeout: 60 * 60,
-      maxMemory: 3072,
-      enable: false
+      maxMemory: 4096,
+      instanceType: "c1",
+      enable: false,
+      features: '',
+      debug: false
     };
 
     const argv = require('yargs/yargs')(argStr).argv;
 
+    if (argv.debug) {
+      args.debug = true;
+    }
+
     if (argv.enable) {
       args.enable = true;
+    }
+
+    if (argv.features) {
+      args.features = argv.features;
     }
 
     if (argv.module) {
@@ -258,6 +280,9 @@ export default class JavaStartupAccelerationComponent {
     }
     if (parseInt(argv.maxMemory) > 0) {
       args.maxMemory = parseInt(argv.maxMemory);
+    }
+    if (argv.instanceType) {
+      args.instanceType = argv.instanceType;
     }
 
     if (argv.downloader) {

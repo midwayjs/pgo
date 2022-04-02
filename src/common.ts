@@ -8,6 +8,10 @@ export const OSS_UTIL_URL = 'https://gosspublic.alicdn.com/ossutil/1.7.9/ossutil
 
 const prefix = '[acceleration adapter] ';
 
+export function debug(msg: string) {
+    console.debug(prefix + msg);
+}
+
 export function info(msg: string) {
     console.info(prefix + msg);
 }
