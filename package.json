@@ -1,7 +1,7 @@
 {
   "name": "@midwayjs/pgo-gen",
   "description": "pgo-gen",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "devDependencies": {
     "@types/fs-extra": "^9.0.13",
     "@types/jest": "^26.0.0",
