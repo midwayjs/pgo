@@ -21,7 +21,7 @@ import * as YAML from 'js-yaml';
 import * as uuid from 'uuid-1345';
 import * as tar from 'tar';
 import * as child_process from 'child_process'
-import {error, info, NAS, OSS, OSS_UTIL_URL, QUICK_START} from "./common";
+import {error, info, debug, NAS, OSS, OSS_UTIL_URL, QUICK_START} from "./common";
 import * as OSSClient from 'ali-oss';
 import got from 'got';
 import {promisify} from "util";
@@ -71,16 +71,20 @@ export class JavaStartupAcceleration {
   timeout;
   initTimeout;
   maxMemory;
+  instanceType;
   tmpBucketName;
   enable;
   serviceName;
   functionName;
   funcEnvVars;
+  features;
+  wrapper;
+  debug;
 
   constructor(pwd: string, config) {
     const { region, fcEndpoint, access, runtime, initializer, credential, role, logConfig, sharedDirName, downloader,
       uploader, ossUtilUrl, ossBucket, ossKey, ossEndpoint, vpcConfig, nasConfig, srpath, maxMemory, timeout,
-      initTimeout, enable, serviceName, functionName, funcEnvVars } = config;
+      initTimeout, enable, serviceName, functionName, funcEnvVars, features, debug, instanceType } = config;
     this.region = region;
     this.runtime = runtime;
     this.initializer = initializer;
@@ -118,6 +122,7 @@ export class JavaStartupAcceleration {
     } else {
       this.tmpSrpath = SRPATH;
     }
+    this.instanceType = instanceType;
     this.maxMemory = maxMemory;
     this.timeout = timeout;
     this.initTimeout = initTimeout;
@@ -126,6 +131,13 @@ export class JavaStartupAcceleration {
     this.serviceName = serviceName;
     this.functionName = functionName;
     this.funcEnvVars = funcEnvVars;
+    this.features = features;
+    if (this.features) {
+      this.wrapper = QUICK_START + " --quickstart=" + this.features;
+    } else {
+      this.wrapper = QUICK_START;
+    }
+    this.debug = debug;
   }
 
   public async gen() {
@@ -148,11 +160,11 @@ export class JavaStartupAcceleration {
   async enableQuickStart() {
     info("function environment variables:" + JSON.stringify(this.funcEnvVars));
     if (this.funcEnvVars) {
-      this.funcEnvVars['BOOTSTRAP_WRAPPER'] = QUICK_START;
+      this.funcEnvVars['BOOTSTRAP_WRAPPER'] = this.wrapper;
       this.funcEnvVars['SRPATH'] = this.srpath;
     } else {
       this.funcEnvVars = {
-        'BOOTSTRAP_WRAPPER': QUICK_START,
+        'BOOTSTRAP_WRAPPER': this.wrapper,
         'SRPATH': this.srpath
       }
     }
@@ -275,6 +287,7 @@ export class JavaStartupAcceleration {
       },
       description: '',
       functionName: tmpFunctionName,
+      instanceType: this.instanceType,
       handler: TEMP_FUNCTION_HANDLER,
       initializer: this.initializer,
       memorySize: this.maxMemory,
@@ -283,7 +296,7 @@ export class JavaStartupAcceleration {
       initializationTimeout: this.initTimeout, // unit second
       environmentVariables: {
         DISABLE_JAVA11_QUICKSTART: 'true',
-        BOOTSTRAP_WRAPPER: QUICK_START,
+        BOOTSTRAP_WRAPPER: this.wrapper,
         SRPATH: this.tmpSrpath
       }
     });
@@ -422,8 +435,9 @@ export class JavaStartupAcceleration {
       }
 
       targetPath = join(toDir, targetPath);
-      info("copy file [" + file + "] to [" + targetPath + "]");
-
+      if (this.debug) {
+        debug("copy file [" + file + "] to [" + targetPath + "]");
+      }
       return copySync(filePath, targetPath);
     }));
   }
