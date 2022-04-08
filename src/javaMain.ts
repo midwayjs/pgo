@@ -14,6 +14,8 @@ export default class JavaStartupAccelerationComponent {
   }
 
   async index(params) {
+    await this.checkSBuildArtifacts();
+
     let args = await this.parseArgs(params.argsObj);
     let debug = args.debug;
     if (debug) {
@@ -264,6 +266,15 @@ export default class JavaStartupAccelerationComponent {
   async getConfig() {
     const yamlContent = await this.readFileContent('s.yaml')
     return YAML.load(yamlContent);
+  }
+
+  async checkSBuildArtifacts() {
+    const path = join(process.cwd(), ".s", "build", "artifacts");
+    if (existsSync(path)) {
+      throw new Error("s build artifacts dir [" + path + "] should be deleted");
+    } else {
+      info("check s build artifacts: ok");
+    }
   }
 
   async readFileContent(fileName: string) {
