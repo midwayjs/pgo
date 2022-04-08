@@ -154,7 +154,7 @@ export class JavaStartupAcceleration {
       info("oss endpoint: " + this.ossEndpoint)
     }
     await this.genDump();
-    info("completed");
+    info("all completed");
   }
 
   async enableQuickStart() {
@@ -220,6 +220,7 @@ export class JavaStartupAcceleration {
       error(e.stderr.toString());
       error(e.stdout.toString());
     } finally {
+      info("start to clean");
       /* delete local temp files */
       await remove(tmpDir);
       await remove(tmpZipFilePath);
@@ -256,15 +257,16 @@ export class JavaStartupAcceleration {
 
     let result = await fcClient.post(`/proxy/${tmpServiceName}/${tmpFunctionName}/action`, body, null);
     let data = result.data;
-    info("server messages: " + data)
+    info("server messages: " + data);
     if (data.indexOf("success") == 0) {
-      info("dumped successfully")
+      info("dumped successfully");
     } else {
       throw new Error("dump encountered error");
     }
   }
 
   private async downloadAccelerationFiles(fcClient, tmpServiceName: string, tmpFunctionName: string) {
+    info("downloading");
     let sharedDir = join(this.artifactPath, this.sharedDirName);
     await ensureDir(sharedDir);
     let localFile = join(sharedDir, ARCHIVE_NAME);
@@ -278,9 +280,11 @@ export class JavaStartupAcceleration {
 
     await this.extractTar(sharedDir, localFile);
     removeSync(localFile);
+    info("download completed");
   }
 
   private async createTempFunction(fcClient, tmpServiceName: string, tmpFunctionName: string, tmpZipFilePath: string) {
+    info("assistant function [" + tmpFunctionName + "] creating");
     await fcClient.createFunction(tmpServiceName, {
       code: {
         zipFile: readFileSync(tmpZipFilePath, 'base64'),
@@ -300,10 +304,11 @@ export class JavaStartupAcceleration {
         SRPATH: this.tmpSrpath
       }
     });
-    info("assistant function [" + tmpFunctionName + "] created")
+    info("assistant function [" + tmpFunctionName + "] created");
   }
 
   private static async createTempTrigger(fcClient, tmpServiceName: string, tmpFunctionName: string, tmpTriggerName: string) {
+    info("assistant trigger [" + tmpTriggerName + "] creating");
     await fcClient.createTrigger(tmpServiceName, tmpFunctionName, {
       invocationRole: '',
       qualifier: 'LATEST',
@@ -312,10 +317,11 @@ export class JavaStartupAcceleration {
       triggerName: tmpTriggerName,
       triggerType: 'http'
     });
-    info("assistant trigger [" + tmpTriggerName + "] created")
+    info("assistant trigger [" + tmpTriggerName + "] created");
   }
 
   private async createTempService(fcClient, tmpServiceName) {
+    info("assistant service [" + tmpServiceName + "] creating");
     await fcClient.createService(tmpServiceName, {
       description: '用于 Alibaba Dragonwell Acceleration Cache 生成',
       serviceName: tmpServiceName,
@@ -324,7 +330,7 @@ export class JavaStartupAcceleration {
       nasConfig: this.nasConfig,
       vpcConfig: this.vpcConfig,
     });
-    info("assistant service [" + tmpServiceName + "] created")
+    info("assistant service [" + tmpServiceName + "] created");
   }
 
   private async getFCClient() {
@@ -350,11 +356,13 @@ export class JavaStartupAcceleration {
   }
 
   private async genZip(dir: string, zipFilePath: string) {
+    info("zip file creating");
     await this.makeZip(dir, zipFilePath);
     info("zip file created");
   }
 
   private async createZipAndUploadToOSS() {
+    info("start to upload");
     const tmpZipFilePath = join(tmpdir(), this.ossKey);
 
     await this.genZip(this.artifactPath, tmpZipFilePath);
