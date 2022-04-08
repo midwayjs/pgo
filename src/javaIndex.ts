@@ -300,7 +300,7 @@ export class JavaStartupAcceleration {
         SRPATH: this.tmpSrpath
       }
     });
-    info("assistant function created")
+    info("assistant function [" + tmpFunctionName + "] created")
   }
 
   private static async createTempTrigger(fcClient, tmpServiceName: string, tmpFunctionName: string, tmpTriggerName: string) {
@@ -312,7 +312,7 @@ export class JavaStartupAcceleration {
       triggerName: tmpTriggerName,
       triggerType: 'http'
     });
-    info("assistant trigger created")
+    info("assistant trigger [" + tmpTriggerName + "] created")
   }
 
   private async createTempService(fcClient, tmpServiceName) {
@@ -324,7 +324,7 @@ export class JavaStartupAcceleration {
       nasConfig: this.nasConfig,
       vpcConfig: this.vpcConfig,
     });
-    info("assistant service created")
+    info("assistant service [" + tmpServiceName + "] created")
   }
 
   private async getFCClient() {

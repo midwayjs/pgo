@@ -39,7 +39,6 @@ export default class JavaStartupAccelerationComponent {
     }
     srpath = this.removeStrSuffix(srpath, "/");
     let sharedDirName = path.basename(srpath);
-
     let downloader = args.downloader;
     let uploader = args.uploader;
     let ossUtilUrl, ossEndpoint;
@@ -96,6 +95,7 @@ export default class JavaStartupAccelerationComponent {
     let instanceType = args.instanceType;
     let features = args.features;
     let funcEnvVars = await this.getFunctionEnvVars(moduleName);
+
     const instance = new JavaStartupAcceleration(process.cwd(), {
       region,
       fcEndpoint,
@@ -153,7 +153,7 @@ export default class JavaStartupAccelerationComponent {
     const yaml = await this.getConfig();
     if (yaml) {
       try {
-        return yaml[key];
+        return await this.replaceReference(yaml[key]);
       } catch (e) {
         error('read global config [' + key + '] error');
         throw e;
@@ -165,7 +165,7 @@ export default class JavaStartupAccelerationComponent {
     const yaml = await this.getConfig();
     if (yaml) {
       try {
-        return yaml['services'][moduleName]['props'][key];
+        return await this.replaceReference(yaml['services'][moduleName]['props'][key]);
       } catch (e) {
         if (errorIfNotExist) {
           throw e;
@@ -180,7 +180,7 @@ export default class JavaStartupAccelerationComponent {
     const yaml = await this.getConfig();
     if (yaml) {
       try {
-        return yaml['services'][moduleName]['props']['service'][key];
+        return await this.replaceReference(yaml['services'][moduleName]['props']['service'][key]);
       } catch (e) {
         error('read module config [' + key + '] error');
         throw e;
@@ -194,7 +194,7 @@ export default class JavaStartupAccelerationComponent {
     let value = null;
     if (yaml) {
       try {
-        value = yaml['services'][moduleName]['props']['function'][key];
+        value = await this.replaceReference(yaml['services'][moduleName]['props']['function'][key]);
       } catch (e) {
         if (errorIfNotExist) {
           throw e;
@@ -206,6 +206,25 @@ export default class JavaStartupAccelerationComponent {
 
     return value;
   }
+
+  async replaceReference(value) {
+    if (typeof value !== 'string') {
+      return value;
+    }
+    let myRegexp = new RegExp("\\${([a-zA-Z_.0-9]+)}", "g");
+    let match = myRegexp.exec(value);
+    if (match == null) {
+      return value;
+    }
+
+    let ref = match[1].split('.');
+    let config = await this.getConfig();
+    for (let i = 0; i < ref.length; i++) {
+      config = config[ref[i]];
+    }
+    return config;
+  }
+
 
   async getFunctionEnvVar(moduleName: string, name: string) {
     const environmentVariables = await this.getFunctionConfig(moduleName, "environmentVariables", false);
