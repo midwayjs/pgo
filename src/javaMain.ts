@@ -14,6 +14,8 @@ export default class JavaStartupAccelerationComponent {
   }
 
   async index(params) {
+    await this.checkSBuildArtifacts();
+
     let args = await this.parseArgs(params.argsObj);
     let debug = args.debug;
     if (debug) {
@@ -21,15 +23,15 @@ export default class JavaStartupAccelerationComponent {
     }
     info("parsed args: " + JSON.stringify(args));
 
+    let fcEndpoint = await this.getFCEndpoint();
     let moduleName = args.moduleName;
     let serviceName = await this.getServiceConfig(moduleName, 'name');
     let functionName = await this.getFunctionConfig(moduleName, 'name');
-    let fcEndpoint = await this.getFCEndpoint();
     let initializer = await this.getFunctionConfig(moduleName, 'initializer');
     let runtime = await this.getFunctionConfig(moduleName, 'runtime');
     let region = await this.getModulesProps(moduleName, 'region');
-    let role = await this.getServiceConfig(moduleName, 'role');
-    let logConfig = await this.getServiceConfig(moduleName, 'logConfig');
+    let role = await this.getServiceConfig(moduleName, 'role', false);
+    let logConfig = await this.getServiceConfig(moduleName, 'logConfig', false);
     const access = params?.project?.access || this.defaultAccess;
     const credential = await this.getCredential(access);
     let codeUri = await this.getFunctionConfig(moduleName, 'codeUri');
@@ -39,12 +41,11 @@ export default class JavaStartupAccelerationComponent {
     }
     srpath = this.removeStrSuffix(srpath, "/");
     let sharedDirName = path.basename(srpath);
-
     let downloader = args.downloader;
     let uploader = args.uploader;
     let ossUtilUrl, ossEndpoint;
     if (downloader == OSS) {
-      ossUtilUrl = await this.getGlobalConfig('ossUtilUrl');
+      ossUtilUrl = await this.getGlobalConfig('ossUtilUrl', false);
       ossEndpoint = await this.getModulesProps(moduleName, 'ossEndpoint', false);
     }
 
@@ -96,6 +97,7 @@ export default class JavaStartupAccelerationComponent {
     let instanceType = args.instanceType;
     let features = args.features;
     let funcEnvVars = await this.getFunctionEnvVars(moduleName);
+
     const instance = new JavaStartupAcceleration(process.cwd(), {
       region,
       fcEndpoint,
@@ -149,63 +151,102 @@ export default class JavaStartupAccelerationComponent {
     }
   }
 
-  async getGlobalConfig(key: string) {
+  async getGlobalConfig(key: string, errorIfNotExist: boolean = true) {
     const yaml = await this.getConfig();
     if (yaml) {
       try {
-        return yaml[key];
+        let value = await this.replaceReference(yaml[key]);
+        if (value === undefined) {
+          throw new Error("key " + key + " does not exist");
+        }
+        return value;
       } catch (e) {
-        error('read global config [' + key + '] error');
-        throw e;
+        error('read global config [' + key + '] error: ' + e.message);
+        if (errorIfNotExist) {
+          throw e;
+        }
       }
     }
+    return null;
   }
 
   async getModulesProps(moduleName: string, key: string, errorIfNotExist: boolean = true) {
     const yaml = await this.getConfig();
     if (yaml) {
       try {
-        return yaml['services'][moduleName]['props'][key];
+        let value = await this.replaceReference(yaml['services'][moduleName]['props'][key]);
+        if (value === undefined) {
+          throw new Error("key " + key + " does not exist");
+        }
+        return value;
       } catch (e) {
+        info('read module prop [' + key + '] error: ' + e.message);
         if (errorIfNotExist) {
           throw e;
-        } else {
-          info('read module prop [' + key + '] error');
         }
       }
     }
+    return null;
   }
 
-  async getServiceConfig(moduleName: string, key: string) {
+  async getServiceConfig(moduleName: string, key: string, errorIfNotExist: boolean = true) {
     const yaml = await this.getConfig();
     if (yaml) {
       try {
-        return yaml['services'][moduleName]['props']['service'][key];
+        let value = await this.replaceReference(yaml['services'][moduleName]['props']['service'][key]);
+        if (value === undefined) {
+          throw new Error("key " + key + " does not exist");
+        }
+        return value;
       } catch (e) {
-        error('read module config [' + key + '] error');
-        throw e;
+        error('read module config [' + key + '] error: ' + e.message);
+        if (errorIfNotExist) {
+          throw e;
+        }
       }
     }
+    return null;
   }
 
   async getFunctionConfig(moduleName: string, key: string, errorIfNotExist: boolean = true) {
     const yaml = await this.getConfig();
 
-    let value = null;
     if (yaml) {
       try {
-        value = yaml['services'][moduleName]['props']['function'][key];
+        let value = await this.replaceReference(yaml['services'][moduleName]['props']['function'][key]);
+        if (value === undefined) {
+          throw new Error("key " + key + " does not exist");
+        }
+        return value;
       } catch (e) {
+        error('read function config [' + key + '] error: ' + e.message);
         if (errorIfNotExist) {
           throw e;
-        } else {
-          info('function config [' + key + '] does not exist:' + e.message);
         }
       }
     }
 
-    return value;
+    return null;
   }
+
+  async replaceReference(value) {
+    if (typeof value !== 'string') {
+      return value;
+    }
+    let myRegexp = new RegExp("\\${([a-zA-Z_.0-9]+)}", "g");
+    let match = myRegexp.exec(value);
+    if (match == null) {
+      return value;
+    }
+
+    let ref = match[1].split('.');
+    let config = await this.getConfig();
+    for (let i = 0; i < ref.length; i++) {
+      config = config[ref[i]];
+    }
+    return config;
+  }
+
 
   async getFunctionEnvVar(moduleName: string, name: string) {
     const environmentVariables = await this.getFunctionConfig(moduleName, "environmentVariables", false);
@@ -225,6 +266,15 @@ export default class JavaStartupAccelerationComponent {
   async getConfig() {
     const yamlContent = await this.readFileContent('s.yaml')
     return YAML.load(yamlContent);
+  }
+
+  async checkSBuildArtifacts() {
+    const path = join(process.cwd(), ".s", "build", "artifacts");
+    if (existsSync(path)) {
+      throw new Error("s build artifacts dir [" + path + "] should be deleted");
+    } else {
+      info("check s build artifacts: ok");
+    }
   }
 
   async readFileContent(fileName: string) {
