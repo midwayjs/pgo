@@ -10,9 +10,15 @@ let rrcErr;
 let recorded = false;
 exports.start = () => {  
   try {
-    rrc = require('strontium/relational_require_cache');
+    rrc = require('alinode/relational_require_cache');
   } catch (err) {
     rrcErr = err.message;
+  }
+  if(!rrc) { // 兼容老版本
+    try {
+      rrc = require('strontium/relational_require_cache');
+      rrcErr = null;
+    } catch (err) { }
   }
   recordPgo = process.env.PGO_RECORD || process.argv.indexOf('--record-pgo') > -1;
   pgoEntries = [ process.cwd(), path.join(__dirname, 'node_modules') ];
