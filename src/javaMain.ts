@@ -1,14 +1,14 @@
-import * as core from '@serverless-devs/core';
-import {JavaStartupAcceleration} from './javaIndex';
 import * as path from "path";
 import {join} from "path";
 import {existsSync, readFile} from 'fs-extra'
 import * as YAML from 'js-yaml';
-import * as child_process from 'child_process'
-import {ARTIFACT_DIR, error, info, NAS, OSS, SRPATH, STREAM} from "./common";
+
+import {JavaStartupAcceleration} from './javaIndex';
+import {ARTIFACT_DIR, error, info, NAS, OSS, SRPATH, STREAM, getEndPoint, getCredential} from "./common";
 
 export default class JavaStartupAccelerationComponent {
   defaultAccess = 'default';
+
   constructor(defaultAccess) {
     this.defaultAccess = defaultAccess;
   }
@@ -23,7 +23,7 @@ export default class JavaStartupAccelerationComponent {
     }
     info("parsed args: " + JSON.stringify(args));
 
-    let fcEndpoint = await this.getFCEndpoint();
+    let fcEndpoint = await getEndPoint();
     let moduleName = args.moduleName;
     let serviceName = await this.getServiceConfig(moduleName, 'name');
     let functionName = await this.getFunctionConfig(moduleName, 'name');
@@ -33,7 +33,7 @@ export default class JavaStartupAccelerationComponent {
     let role = await this.getServiceConfig(moduleName, 'role', false);
     let logConfig = await this.getServiceConfig(moduleName, 'logConfig', false);
     const access = params?.project?.access || this.defaultAccess;
-    const credential = await this.getCredential(access);
+    const credential = await getCredential(access);
     let codeUri = await this.getFunctionConfig(moduleName, 'codeUri');
     let srpath = await this.getFunctionEnvVar(moduleName, 'SRPATH');
     if (!srpath) {
@@ -130,25 +130,6 @@ export default class JavaStartupAccelerationComponent {
     });
 
     await instance.gen();
-  }
-
-  async getCredential(access) {
-    const credential =  await core.getCredential(access);
-    return {
-      accountId: credential.AccountID,
-      secret: credential.AccessKeySecret,
-      ak: credential.AccessKeyID,
-    };
-  }
-
-  async getFCEndpoint() {
-    let output = child_process.execSync('s cli fc-default get');
-    let lines = output.toString().split("\n");
-    for (let index in lines) {
-      if (lines[index].indexOf('fc-endpoint:') === 0) {
-        return lines[index].split(": ")[1];
-      }
-    }
   }
 
   async getGlobalConfig(key: string, errorIfNotExist: boolean = true) {
