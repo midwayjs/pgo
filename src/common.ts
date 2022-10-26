@@ -33,7 +33,7 @@ export async function getEndPoint() {
 }
 
 
-export async function getCredential(access) {
+export async function getCredential(access): Promise<{ accountId: string, secret: string, ak: string,  }> {
     const credential = await core.getCredential(access);
     return {
         accountId: credential.AccountID,

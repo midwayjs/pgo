@@ -3,3 +3,4 @@ dist
 *.strrc
 .s
 .idea
+package-lock.json

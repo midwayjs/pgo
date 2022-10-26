@@ -624,7 +624,7 @@ export class JavaStartupAcceleration {
       const config = yaml[this.access ||  Object.keys(yaml)[0]];
       accountId = this.serverlessDevsDecrypt(config.AccountID)
       ak =  this.serverlessDevsDecrypt(config.AccessKeyID);
-      secret =  this.serverlessDevsDecrypt(config.AccessKeySecret);
+      secret = this.serverlessDevsDecrypt(config.AccessKeySecret);
     }
 
     return {

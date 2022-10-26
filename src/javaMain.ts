@@ -1,7 +1,8 @@
+import * as core from "@serverless-devs/core"
+
 import * as path from "path";
 import {join} from "path";
 import {existsSync, readFile} from 'fs-extra'
-import * as YAML from 'js-yaml';
 
 import {JavaStartupAcceleration} from './javaIndex';
 import {ARTIFACT_DIR, error, info, NAS, OSS, SRPATH, STREAM, getEndPoint, getCredential} from "./common";
@@ -246,7 +247,7 @@ export default class JavaStartupAccelerationComponent {
 
   async getConfig() {
     const yamlContent = await this.readFileContent('s.yaml')
-    return YAML.load(yamlContent);
+    return core.parseYaml(yamlContent);
   }
 
   async checkSBuildArtifacts() {
