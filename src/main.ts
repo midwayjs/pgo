@@ -35,8 +35,10 @@ export type PGOOptions = {
   serviceModel;
 
   // valuable fields exracted from serviceModel
+  region: string;
   initializer: string;
   handler: string;
+  codeUri: string;
 
   // node
   remove_node_modules: boolean;
@@ -80,6 +82,8 @@ function parseOptions(args): PGOOptions {
   const lang = serviceModel.services[funcName].props.function.runtime
   const initializer = serviceModel.services[funcName].props.function.initializer
   const handler = serviceModel.services[funcName].props.function.handler
+  const codeUri = serviceModel.services[funcName].props.function.codeUri
+  const region = serviceModel.services[funcName].props.region
 
   return {
     serviceModel: serviceModel,
@@ -89,6 +93,8 @@ function parseOptions(args): PGOOptions {
     lang: lang,
     initializer: initializer,
     handler: handler,
+    codeUri: codeUri,
+    region: region,
 
     remove_node_modules: false,
     ...DefaultPGOOptioins
@@ -148,9 +154,9 @@ export default class PGOComponent {
   }
 
   async python(params: ComponentProps, options: PGOOptions) {
-    common.error("start pycds")
+    common.info("start pycds")
     const instance = new pycds.PyCDS(params, options)
     await instance.create_tmp_function()
-    common.error("end pycds")
+    common.info("end pycds")
   }
 }

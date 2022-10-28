@@ -1,7 +1,7 @@
-import { exec } from "child_process";
+import { execSync } from "child_process";
 import { platform } from 'os';
 import { dirname, join, relative } from 'path';
-import { lstat, readlink, createWriteStream, readFile } from 'fs-extra';
+import { lstat, readlink, createWriteStream, readFile, copy, writeFile } from 'fs-extra';
 import * as globby from 'globby';
 import * as JSZip from 'jszip';
 import * as uuid from 'uuid-1345';
@@ -34,24 +34,32 @@ abstract class AbstractPGO {
 
 export class PyCDS extends AbstractPGO {
   async create_tmp_function(): Promise<any> {
-    exec(
-      's build -t ../s.yaml --use-docker' +
-      ' --command "PYTHONUSERBASE=/code/.s/python pip3 install --user --upgrade code-data-share"', (error, stdout, stderr) => {
-        if (error) {
-          console.debug(stdout)
-          console.debug(stderr)
-          return Promise.reject("安装 pycds 依赖失败，跳过生成")
-        }
-      }
-    )
+    const tmpFunc = await common.copyToTmp('.')
 
-    await this.makeZip(this.pwd, "tmp.zip")
+    try {
+      execSync(
+        's build --use-docker' +
+        ' --command "PYTHONUSERBASE=/code/.s/python pip3 install --user --upgrade code-data-share"',
+        { cwd: tmpFunc }
+      )
+    } catch (error) {
+      common.error(error.message)
+      common.error(error.stdout)
+      common.error(error.stderr)
+      return Promise.reject("安装 pycds 依赖失败，跳过生成")
+    }
+
+    const funcCode = join(tmpFunc, this.options.codeUri)
+
+    await copy(join(__dirname, '../resources/pgo_index.py'), join(funcCode, 'pgo_index.py'));
+
+    await this.makeZip(funcCode, "tmp.zip")
 
     // fc SDK
     console.error('initing sdk')
     const { accountId, ak, secret } = await common.getCredential('default')
     const fcClient = new FCClientInner(accountId, {
-      region: 'cn-hangzhou',
+      region: this.options.region,
       endpoint: await common.getEndPoint(),
       accessKeyID: ak,
       accessKeySecret: secret,
@@ -63,26 +71,44 @@ export class PyCDS extends AbstractPGO {
     await fcClient.createService(serviceName, {
       description: '用于 Alinode Cloud Require Cache 生成',
     });
-    const functionName = `dump-${uuid.v1()}`;
 
     console.error('create f')
+    const functionName = `dump-${uuid.v1()}`;
     await fcClient.createFunction(serviceName, {
       code: {
         zipFile: readFileSync("tmp.zip", 'base64')
       },
       description: '',
       functionName,
-      handler: this.options.handler,
-      initializer: this.options.initializer,
+      handler: 'pgo_index.gen_handler',
+      initializer: 'pgo_index.initializer',
       memorySize: 1024,
       runtime: 'python3.9',
       timeout: 300,
       initializationTimeout: 300,
       environmentVariables: {
-        PGO_RECORD: 'true',
-        NODE_ENV: 'development',
+        PYTHONUSERBASE: '/code/.s/python',
+        PYCDSMODE: 'TRACE',
+        PYCDSLIST: '/tmp/cds.lst'
       },
     })
+
+    const triggerName = 't1'
+    // create trigger
+    await fcClient.createTrigger(serviceName, functionName, {
+      invocationRole: '',
+      qualifier: 'LATEST',
+      sourceArn: 'test',
+      triggerConfig: {authType: "anonymous", methods: ["GET"]},
+      triggerName: triggerName,
+      triggerType: 'http'
+    });
+
+    // call & download
+    const { data } = await fcClient.get(`/proxy/${serviceName}/${functionName}/pgo_dump/download`)
+    await writeFile(join(this.options.codeUri, 'cds.img'), data)
+
+    await fcClient.deleteTrigger(serviceName, functionName, triggerName)
 
     // cleanup
     const { aliases } = (await fcClient.listAliases(serviceName, { limit: 100 })).data;
