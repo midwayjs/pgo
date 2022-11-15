@@ -1,7 +1,7 @@
 import { execSync } from "child_process";
 import { platform } from 'os';
 import { dirname, join, relative } from 'path';
-import { lstat, readlink, createWriteStream, readFile, copy, writeFile } from 'fs-extra';
+import { lstat, readlink, createWriteStream, readFile, copy, writeFile, unlink, readFileSync, existsSync, rm, exists, pathExists } from 'fs-extra';
 import * as globby from 'globby';
 import * as JSZip from 'jszip';
 import * as uuid from 'uuid-1345';
@@ -15,26 +15,123 @@ import * as FCClientInner from '@alicloud/fc2';
 
 import * as main from "./main"
 import * as common from "./common";
-import { readFileSync } from "fs";
 
 abstract class AbstractPGO {
   pwd = process.cwd();
   params: main.ComponentProps;
   options: main.PGOOptions;
 
-  // abstract gen_tmp_function(): Promise<any>;
-
-  abstract create_tmp_function(): Promise<any>
+  abstract run(): Promise<any>
 
   constructor(params: main.ComponentProps, options: main.PGOOptions) {
     this.params = params
     this.options = options
   }
+
+  tmpContext: {
+    client: any,
+    service: string,
+    function: string,
+    trigger: string,
+  }
+
+  async get_fcclient() {
+    var client = this.tmpContext?.client
+
+    if (!client) {
+      console.debug('initing sdk')
+      const { accountID, accessKeyID, accessKeySecret } = await common.getCredential('default')
+      client = new FCClientInner(accountID, {
+        region: this.options.region,
+        endpoint: await common.getEndPoint(),
+        accessKeyID: accessKeyID,
+        accessKeySecret: accessKeySecret,
+      });
+
+      this.tmpContext = {
+        client: client,
+        service: this.tmpContext?.service,
+        function: this.tmpContext?.function,
+        trigger: this.tmpContext?.trigger,
+      }
+    }
+
+    return this.tmpContext.client
+  }
 }
 
 export class PyCDS extends AbstractPGO {
+  async run() {
+    return this.cleanup_artifacts()
+      .then(this.create_tmp_function.bind(this))
+      .then(this.download_from_tmp_function.bind(this))
+      .then(this.patch_orig_function.bind(this))
+      .finally(this.cleanup_tmp_function.bind(this))
+  }
+
+  async cleanup_artifacts(): Promise<void> {
+    const archive = join(this.options.codeUri, 'cds.img')
+    const dots = join(this.options.codeUri, '.s')
+
+    const removes: Promise<void>[] = [
+      pathExists(archive).then(value => value ? unlink(archive) : Promise.resolve(undefined)),
+      pathExists(dots).then(value => value ? rm(dots) : Promise.resolve(undefined))
+    ]
+
+    return Promise.all(removes).then(_ => {
+      common.info('历史文件清理完成')
+      return Promise.resolve(undefined)
+    }).catch(err => Promise.reject('历史文件清理失败，跳过生成'))
+  }
+
+  async download_from_tmp_function(): Promise<void> {
+    return this.get_fcclient()
+      .then(client => client.get(`/proxy/${this.tmpContext.service}/${this.tmpContext.function}/pgo_dump/download`))
+      .then(data => writeFile(join(this.options.codeUri, 'cds.img'), data))
+  }
+
+  async cleanup_tmp_function(): Promise<void> {
+    const client = await this.get_fcclient()
+    const s = this.tmpContext.service
+    const f = this.tmpContext.function
+
+    return client.listTriggers(this.tmpContext.service, this.tmpContext.function)
+      .then(data => {
+        const { triggers } = data
+        return Promise.all(triggers.map(t => client.deleteTrigger(s, f, t.triggerName)))
+      })
+
+      .finally(() => { return client.listAliases(s, { limit: 100 }) })
+      .then(data => {
+        const { aliases } = data
+        return Promise.all(aliases.map(a => client.deleteAlias(s, a.aliasName)))
+      })
+
+      .finally(() => { return client.listVersions(s, { limit: 100 }) })
+      .then(data => {
+        const { versions } = data
+        return Promise.all(versions.map(v => client.deleteVersion(s, v.versionId)))
+      })
+
+      .finally(() => { return client.listFunctions(s, { limit: 100 }) })
+      .then(data => {
+        const { functions } = data
+        return Promise.all(functions.map(f => client.deleteFunction(s, f.functionName)))
+      })
+
+      .finally(() => client.deleteService(s) )
+
+      // ignore errors
+      .catch(_ => Promise.resolve(undefined))
+  }
+
+  patch_orig_function(): Promise<any> {
+    throw new Error("Method not implemented.");
+  }
+
   async create_tmp_function(): Promise<any> {
     const tmpFunc = await common.copyToTmp('.')
+    common.debug(`copy original project to ${tmpFunc}`)
 
     try {
       execSync(
@@ -55,75 +152,53 @@ export class PyCDS extends AbstractPGO {
 
     await this.makeZip(funcCode, "tmp.zip")
 
-    // fc SDK
-    console.error('initing sdk')
-    const { accountId, ak, secret } = await common.getCredential('default')
-    const fcClient = new FCClientInner(accountId, {
-      region: this.options.region,
-      endpoint: await common.getEndPoint(),
-      accessKeyID: ak,
-      accessKeySecret: secret,
-    });
+    console.debug('initing sdk')
+    const client = await this.get_fcclient();
 
     // create service
-    console.error('create s')
+    console.debug('create service')
     const serviceName = "tmp-service-0"
-    await fcClient.createService(serviceName, {
-      description: '用于 Alinode Cloud Require Cache 生成',
-    });
-
-    console.error('create f')
     const functionName = `dump-${uuid.v1()}`;
-    await fcClient.createFunction(serviceName, {
-      code: {
-        zipFile: readFileSync("tmp.zip", 'base64')
-      },
-      description: '',
-      functionName,
-      handler: 'pgo_index.gen_handler',
-      initializer: 'pgo_index.initializer',
-      memorySize: 1024,
-      runtime: 'python3.9',
-      timeout: 300,
-      initializationTimeout: 300,
-      environmentVariables: {
-        PYTHONUSERBASE: '/code/.s/python',
-        PYCDSMODE: 'TRACE',
-        PYCDSLIST: '/tmp/cds.lst'
-      },
-    })
-
     const triggerName = 't1'
-    // create trigger
-    await fcClient.createTrigger(serviceName, functionName, {
-      invocationRole: '',
-      qualifier: 'LATEST',
-      sourceArn: 'test',
-      triggerConfig: {authType: "anonymous", methods: ["GET"]},
-      triggerName: triggerName,
-      triggerType: 'http'
-    });
 
-    // call & download
-    const { data } = await fcClient.get(`/proxy/${serviceName}/${functionName}/pgo_dump/download`)
-    await writeFile(join(this.options.codeUri, 'cds.img'), data)
-
-    await fcClient.deleteTrigger(serviceName, functionName, triggerName)
-
-    // cleanup
-    const { aliases } = (await fcClient.listAliases(serviceName, { limit: 100 })).data;
-    await Promise.all(aliases.map(alias => fcClient.deleteAlias(serviceName, alias.aliasName)));
-
-    const { versions } = (await fcClient.listVersions(serviceName, { limit: 100 })).data;
-    await Promise.all(versions.map(version => fcClient.deleteVersion(serviceName, version.versionId)));
-
-    const { functions } = (await fcClient.listFunctions(serviceName, { limit: 100 })).data;
-    await Promise.all(functions.map(func => fcClient.deleteFunction(serviceName, func.functionName)));
-
-    await fcClient.deleteService(serviceName);
+    return client.createService(serviceName, { description: '用于 Alinode Cloud Require Cache 生成', })
+      .catch(err => Promise.reject('service 创建失败，跳过生成'))
+      .then(_ => { this.tmpContext.service = serviceName })
+      .then(_ => {
+        return client.createFunction(serviceName, {
+          code: {
+            zipFile: readFileSync("tmp.zip", 'base64')
+          },
+          description: '',
+          functionName,
+          handler: 'pgo_index.gen_handler',
+          initializer: 'pgo_index.initializer',
+          memorySize: 1024,
+          runtime: 'python3.9',
+          timeout: 300,
+          initializationTimeout: 300,
+          environmentVariables: {
+            PYTHONUSERBASE: '/code/.s/python',
+            PYCDSMODE: 'TRACE',
+            PYCDSLIST: '/tmp/cds.lst'
+          },
+        })
+      })
+      .catch(err => Promise.reject('function 创建失败，跳过生成'))
+      .then(_ => { this.tmpContext.function = functionName })
+      .then(_ => {
+        return client.createTrigger(serviceName, functionName, {
+          invocationRole: '',
+          qualifier: 'LATEST',
+          sourceArn: 'test',
+          triggerConfig: { authType: "anonymous", methods: ["GET"] },
+          triggerName: triggerName,
+          triggerType: 'http'
+        })
+      })
+      .catch(err => Promise.reject('trigger 创建失败，跳过生成'))
+      .then(_ => { this.tmpContext.trigger = triggerName });
   }
-
-
 
   private async makeZip(sourceDirection: string, targetFileName: string) {
     let ignore = [];
@@ -174,5 +249,4 @@ export class PyCDS extends AbstractPGO {
         .once('error', rej);
     });
   }
-
 }

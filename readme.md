@@ -1,5 +1,18 @@
 ## 介绍
 
+PGO（Profile Guided Optimization），是一种根据运行时 Profiling Data 来进行优化的技术。
+本项目的主要目标是通过运行时信息优化动态语言的启动速度。
+
+目前本项目通过不同的方案支持如下语言
+
+### Node.js
+### Java
+### Python
+
+### Node.js
+
+## 介绍
+
 PGO（Profile Guided Optimization），是一种根据运行时 Profiling Data 来进行优化的技术，通过下面两个方面，使 Node.js 应用启动时间提升数倍：
 ### 1. require 关系加速
 

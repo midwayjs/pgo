@@ -37,13 +37,13 @@ export async function getEndPoint() {
 }
 
 
-export async function getCredential(access): Promise<{ accountId: string, secret: string, ak: string, }> {
+export async function getCredential(access): Promise<{ accountID: string, accessKeySecret: string, accessKeyID: string, }> {
   const credential = await core.getCredential(access);
   return {
-    accountId: credential.AccountID,
-    secret: credential.AccessKeySecret,
-    ak: credential.AccessKeyID,
-  };
+    accountID: credential.AccountID,
+    accessKeySecret: credential.AccessKeySecret,
+    accessKeyID: credential.AccessKeyID,
+  }
 }
 
 export async function copyToTmp(dir: string): Promise<string> {

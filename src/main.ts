@@ -1,6 +1,6 @@
 import * as minimist from 'minimist';
 import * as core from "@serverless-devs/core"
-import { readFileSync } from 'fs-extra';
+import { existsSync, readFileSync } from 'fs-extra';
 
 import { PGO } from './index';
 import JavaStartupAccelerationComponent from "./javaMain";
@@ -9,7 +9,8 @@ import * as pycds from "./pycds"
 
 const NODE_RUNTIME = 'node'
 const JAVA_RUNTIME = 'java'
-const PYTHON_RUNTIME = 'python'
+
+const SUPPORTED_PYTHON_RUNTIMES = ['python3.9']
 
 /**
  * Ref: https://docs.serverless-devs.com/sdm/serverless_package_model/package_model
@@ -50,14 +51,15 @@ export const DefaultPGOOptioins = {
   remove_node_modules: false
 }
 
-function parseOptions(args): PGOOptions {
+async function parseOptions(args): Promise<PGOOptions> {
   const opts = minimist(args)
   console.error(opts)
 
-  if (!opts.model) {
-    throw new Error('s.yaml need to be specified to create temporary function.')
+  var model = opts.model || 's.yaml'
+  if (!existsSync(model)) {
+    throw new Error('cannot find s.yaml file, specific --model to the yaml file.')
   }
-  const yamlContent = readFileSync(opts.model, 'utf8')
+  const yamlContent = readFileSync(model, 'utf8')
   const serviceModel = core.parseYaml(yamlContent)
 
   // 读取 service/function
@@ -115,13 +117,15 @@ export default class PGOComponent {
   }
 
   async index(params: ComponentProps) {
-    const options = parseOptions(params.argsObj || [])
+    const options = await parseOptions(params.argsObj || [])
 
     const args = minimist(params.argsObj || []);
     const access = params?.project?.access || this.defaultAccess;
     const credential = await common.getCredential(access);
     const endpoint = await common.getEndPoint();
-    const lang = this.getLang(args);
+
+
+    const lang = options.lang;
     if (lang === NODE_RUNTIME) {
       const pgoInstance = new PGO(process.cwd(), {
         initializer: params?.props?.initializer || 'index.initializer',
@@ -132,9 +136,9 @@ export default class PGOComponent {
       });
       await pgoInstance.gen(args);
     } else if (lang === JAVA_RUNTIME) {
-        await this.java(params);
-    } else if (lang === PYTHON_RUNTIME) {
-        await this.python(params, options)
+      await this.java(params);
+    } else if (SUPPORTED_PYTHON_RUNTIMES.indexOf(lang) != -1) {
+      await this.python(params, options)
     } else {
       common.error("cannot parse runtime language, try to specific `--module` or `--lang`.");
     }
@@ -156,7 +160,8 @@ export default class PGOComponent {
   async python(params: ComponentProps, options: PGOOptions) {
     common.info("start pycds")
     const instance = new pycds.PyCDS(params, options)
-    await instance.create_tmp_function()
+    await instance.run()
+      .catch(common.error)
     common.info("end pycds")
   }
 }
