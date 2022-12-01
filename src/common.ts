@@ -179,4 +179,8 @@ export abstract class AbstractPGO {
         .once('error', rej);
     });
   }
+
+  async downloadArchiveStream() {
+    
+  }
 }

@@ -15,7 +15,9 @@ export class PyCDS extends common.AbstractPGO {
       .then(this.create_tmp_function.bind(this))
       .then(this.download_from_tmp_function.bind(this))
       .then(this.patch_orig_function.bind(this))
-      .finally(this.cleanup_tmp_function.bind(this))
+      .then(this.cleanup_tmp_function.bind(this), (reason) =>
+        this.cleanup_tmp_function.bind(this)().finally(_ => Promise.reject(reason))
+      )
   }
 
   async cleanup_artifacts(): Promise<void> {
@@ -34,13 +36,15 @@ export class PyCDS extends common.AbstractPGO {
   }
 
   async download_from_tmp_function(): Promise<void> {
+    common.debug('download')
     return this.get_fcclient()
       .then(client => client.get(`/proxy/${this.tmpContext.service}/${this.tmpContext.function}/pgo_dump/download`))
       .then(data => writeFile(join(this.options.codeUri, 'cds.img'), data))
   }
 
   patch_orig_function(): Promise<any> {
-    throw new Error("Method not implemented.");
+    // throw new Error("Method not implemented.");
+    return Promise.resolve(undefined)
   }
 
   async create_tmp_function(): Promise<any> {
@@ -48,10 +52,12 @@ export class PyCDS extends common.AbstractPGO {
     common.debug(`copy original project to ${tmpFunc}`)
 
     try {
-      execSync(
-        's build --use-docker' +
-        ' --command "PYTHONUSERBASE=/code/.s/python pip3 install --user --upgrade code-data-share"',
-        { cwd: tmpFunc }
+      const cmd = `s ${this.options.service}` + ' build --use-docker' +
+        ' --command "PYTHONUSERBASE=/code/.s/python pip3 install --user --upgrade code-data-share"'
+      common.debug("正在使用 docker 环境安装启动加速组件，首次使用可能较慢。")
+      common.debug("如长时间无响应，可使用如下命令拉取成功后重新运行")
+      common.debug(`cd "${tmpFunc}" && ${cmd}`)
+      execSync(cmd, { cwd: tmpFunc }
       )
     } catch (error) {
       common.error(error.message)
@@ -71,13 +77,18 @@ export class PyCDS extends common.AbstractPGO {
 
     // create service
     console.debug('create service')
-    const serviceName = "tmp-service-0"
-    const functionName = `dump-${uuid.v1()}`;
-    const triggerName = 't1'
+
+    const tmpSession = uuid.v1()
+    const serviceName = `pgo-service-${tmpSession}`
+    const functionName = `pgo-function-${tmpSession}`
+    const triggerName = `pgo-function-${tmpSession}`
+
+    this.tmpContext.service = serviceName
+    this.tmpContext.function = functionName
+    this.tmpContext.trigger = triggerName
 
     return client.createService(serviceName, { description: '用于 Alinode Cloud Require Cache 生成', })
-      .catch(err => Promise.reject('service 创建失败，跳过生成'))
-      .then(_ => { this.tmpContext.service = serviceName })
+      .catch((err: any) => Promise.reject(new Error(`service 创建失败: ${err}`)))
       .then(_ => {
         return client.createFunction(serviceName, {
           code: {
@@ -96,10 +107,8 @@ export class PyCDS extends common.AbstractPGO {
             PYCDSMODE: 'TRACE',
             PYCDSLIST: '/tmp/cds.lst'
           },
-        })
+        }).catch((err: any) => Promise.reject(new Error(`function 创建失败: ${err}`)))
       })
-      .catch(err => Promise.reject('function 创建失败，跳过生成'))
-      .then(_ => { this.tmpContext.function = functionName })
       .then(_ => {
         return client.createTrigger(serviceName, functionName, {
           invocationRole: '',
@@ -108,9 +117,7 @@ export class PyCDS extends common.AbstractPGO {
           triggerConfig: { authType: "anonymous", methods: ["GET"] },
           triggerName: triggerName,
           triggerType: 'http'
-        })
+        }).catch((err: any) => Promise.reject(new Error(`trigger 创建失败: ${err}`)))
       })
-      .catch(err => Promise.reject('trigger 创建失败，跳过生成'))
-      .then(_ => { this.tmpContext.trigger = triggerName });
   }
 }

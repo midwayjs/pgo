@@ -6,9 +6,9 @@ import { NodePGO } from './node';
 import * as common from "./common"
 import * as pycds from "./pycds"
 
-const NODE_RUNTIME = 'node'
 const JAVA_RUNTIME = 'java'
 
+const SUPPORTED_NODE_RUNTIMES = ['nodejs14']
 const SUPPORTED_PYTHON_RUNTIMES = ['python3.9']
 
 /**
@@ -117,7 +117,7 @@ async function parseOptions(args: ComponentProps): Promise<PGOOptions> {
 export default class PGOComponent {
   defaultAccess = 'default';
 
-  constructor(params: any = {}) {}
+  constructor(params: any = {}) { }
 
   async gen(params: ComponentProps) {
     await this.index(params);
@@ -128,7 +128,7 @@ export default class PGOComponent {
 
     var pgoInstance: common.AbstractPGO
 
-    if (options.lang === NODE_RUNTIME) {
+    if (SUPPORTED_NODE_RUNTIMES.indexOf(options.lang) != -1) {
       pgoInstance = new NodePGO(options)
     } else if (options.lang === JAVA_RUNTIME) {
       // pgoInstance = new JavaStartupAccelerationComponent(options)
@@ -138,6 +138,6 @@ export default class PGOComponent {
       common.error("cannot parse runtime language, try to specific `--module` or `--lang`.");
     }
 
-    await pgoInstance.run();
+    await pgoInstance.run().catch(err => { common.error(`创建失败，跳过生成: ${err}`) });
   }
 }

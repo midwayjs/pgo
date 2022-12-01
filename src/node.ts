@@ -21,7 +21,8 @@ export class NodePGO extends AbstractPGO {
     const tmpName = `${pgoFunctionName}-${Date.now()}`;
     const tmpDir = join(tmpdir(), tmpName);
     await ensureDir(tmpDir);
-    const entry = this.options.initializer.split('.');
+
+    const entry = this.options.initializer?.split('.');
 
     // 拷贝 pgo 工具库
     await copy(join(__dirname, '../pgoCommonUtils.js'), join(this.options.codeUri, 'pgoCommonUtils.js'));

@@ -103,7 +103,7 @@ export class JavaStartupAcceleration {
     if (ossEndpoint) {
       this.ossEndpoint = ossEndpoint;
     } else {
-      this.ossEndpoint = 'oss-${FC_REGION}-internal.aliyuncs.com'.replace('${FC_REGION}', this.region);
+      this.ossEndpoint = `oss-${this.region}-internal.aliyuncs.com`;
     }
     if (ossUtilUrl) {
       this.ossUtilUrl = ossUtilUrl;
