@@ -7,11 +7,17 @@ export const ARTIFACT_DIR = 'target/artifact';
 export const OSS_UTIL_URL = 'https://gosspublic.alicdn.com/ossutil/1.7.9/ossutil64';
 
 import { copy, ensureDir } from 'fs-extra';
+import { platform } from 'os';
+import { dirname, relative } from 'path';
+import { lstat, readlink, createWriteStream, readFile } from 'fs-extra';
 
 import * as core from '@serverless-devs/core';
 import * as FCClientInner from '@alicloud/fc2';
+import * as globby from 'globby';
+import * as JSZip from 'jszip';
 
-import *as main from './main'
+
+import * as main from './main'
 
 // import globby = require('globby');
 import { tmpdir } from 'os';
@@ -123,5 +129,54 @@ export abstract class AbstractPGO {
 
       // ignore errors
       .catch(_ => Promise.resolve(undefined))
+  }
+
+  async makeZip(sourceDirection: string, targetFileName: string) {
+    let ignore = [];
+    const fileList = await globby(['**'], {
+      onlyFiles: false,
+      followSymbolicLinks: false,
+      cwd: sourceDirection,
+      ignore,
+    });
+    const zip = new JSZip();
+    const isWindows = platform() === 'win32';
+    for (const fileName of fileList) {
+      const absPath = join(sourceDirection, fileName);
+      const stats = await lstat(absPath);
+      if (stats.isDirectory()) {
+        zip.folder(fileName);
+      } else if (stats.isSymbolicLink()) {
+        let link = await readlink(absPath);
+        if (isWindows) {
+          link = relative(dirname(absPath), link).replace(/\\/g, '/');
+        }
+        zip.file(fileName, link, {
+          binary: false,
+          createFolders: true,
+          unixPermissions: stats.mode,
+        });
+      } else if (stats.isFile()) {
+        const fileData = await readFile(absPath);
+        zip.file(fileName, fileData, {
+          binary: true,
+          createFolders: true,
+          unixPermissions: stats.mode,
+        });
+      }
+    }
+    await new Promise((res, rej) => {
+      zip
+        .generateNodeStream({
+          platform: 'UNIX',
+          compression: 'DEFLATE',
+          compressionOptions: {
+              level: 6
+          }
+        })
+        .pipe(createWriteStream(targetFileName))
+        .once('finish', res)
+        .once('error', rej);
+    });
   }
 }

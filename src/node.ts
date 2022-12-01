@@ -1,35 +1,13 @@
-import { platform, tmpdir } from 'os';
-import { dirname, join, relative } from 'path';
-import { ensureDir, copy, lstat, readlink, createWriteStream, move, writeFile, existsSync, readFileSync, remove, readFile } from 'fs-extra';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { ensureDir, copy, move, writeFile, existsSync, readFileSync, remove } from 'fs-extra';
 import { findNpm, installNpm } from '@midwayjs/command-core';
 import * as globby from 'globby';
-import * as JSZip from 'jszip';
 import * as uuid from 'uuid-1345';
 
 import { AbstractPGO } from './common';
 
-const Crypto = require('crypto-js');
-const ServerlessDevsEncryKey = 'SecretKey123';
 export class NodePGO extends AbstractPGO {
-  // initializer;
-  // access;
-  // pwd = process.cwd();
-  // defaultCredential;
-  // endpoint;
-  // region;
-  // constructor(pwd: string, config) {
-  //   const { access, initializer, credential, endpoint, region } = config
-  //   this.initializer = initializer;
-  //   this.defaultCredential = credential;
-  //   this.access = access;
-  //   this.pwd = pwd;
-  //   this.endpoint = endpoint;
-  //   this.region = region;
-  // }
-
-  // public async gen(args?) {
-  //   await this.genDump(args);
-  // }
 
   async run() {
     const pkgJsonFIle = join(this.options.codeUri, 'package.json');
@@ -82,10 +60,6 @@ exports.${initializerFun} = async (context, callback) => {
         '**/node_modules/**'
       ],
     });
-
-
-    
-
 
     await Promise.all(fileList.map(file => {
       const filePath = join(this.options.codeUri, file);
@@ -174,82 +148,19 @@ exports.${initializerFun} = async (context, callback) => {
       buffer = Buffer.concat([buffer, buf]);
       currentLen += curPartSize;
     }
-    
+
     const pgorrc = join(this.options.codeUri, 'require_cache.strrc');
     await writeFile(pgorrc, buffer);
+
     // 清理
-    // 列出该 Service 的 Alias 并删除
-    const { aliases } = (await fcClient.listAliases(serviceName, { limit: 100 })).data;
-    await Promise.all(aliases.map(alias => fcClient.deleteAlias(serviceName, alias.aliasName)));
-
-    // 列出该 Service 的 Version 并删除
-    const { versions } = (await fcClient.listVersions(serviceName, { limit: 100 })).data;
-    await Promise.all(versions.map(version => fcClient.deleteVersion(serviceName, version.versionId)));
-
-    // 列出该 Service 的函数并删除
-    const { functions } = (await fcClient.listFunctions(serviceName, { limit: 100 })).data;
-    await Promise.all(functions.map(func => fcClient.deleteFunction(serviceName, func.functionName)));
-
-    // 删除 Service
-    await fcClient.deleteService(serviceName);
+    this.tmpContext.service = serviceName
+    this.tmpContext.function = functionName
+    await this.cleanup_tmp_function()
 
     const nm = join(this.options.codeUri, 'node_modules');
     if (this.options.remove_node_modules && existsSync(nm)) {
       await remove(nm);
     }
     console.log('PGO Generated');
-  }
-
-  private async makeZip(sourceDirection: string, targetFileName: string) {
-    let ignore = [];
-    const fileList = await globby(['**'], {
-      onlyFiles: false,
-      followSymbolicLinks: false,
-      cwd: sourceDirection,
-      ignore,
-    });
-    const zip = new JSZip();
-    const isWindows = platform() === 'win32';
-    for (const fileName of fileList) {
-      const absPath = join(sourceDirection, fileName);
-      const stats = await lstat(absPath);
-      if (stats.isDirectory()) {
-        zip.folder(fileName);
-      } else if (stats.isSymbolicLink()) {
-        let link = await readlink(absPath);
-        if (isWindows) {
-          link = relative(dirname(absPath), link).replace(/\\/g, '/');
-        }
-        zip.file(fileName, link, {
-          binary: false,
-          createFolders: true,
-          unixPermissions: stats.mode,
-        });
-      } else if (stats.isFile()) {
-        const fileData = await readFile(absPath);
-        zip.file(fileName, fileData, {
-          binary: true,
-          createFolders: true,
-          unixPermissions: stats.mode,
-        });
-      }
-    }
-    await new Promise((res, rej) => {
-      zip
-        .generateNodeStream({
-          platform: 'UNIX',
-          compression: 'DEFLATE',
-          compressionOptions: {
-              level: 6
-          }
-        })
-        .pipe(createWriteStream(targetFileName))
-        .once('finish', res)
-        .once('error', rej);
-    });
-  }
-
-  serverlessDevsDecrypt(value) {
-    return Crypto.AES.decrypt(value, ServerlessDevsEncryKey).toString(Crypto.enc.Utf8);
   }
 }

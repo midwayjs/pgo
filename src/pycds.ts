@@ -1,9 +1,6 @@
 import { execSync } from "child_process";
-import { platform } from 'os';
-import { dirname, join, relative } from 'path';
-import { lstat, readlink, createWriteStream, readFile, copy, writeFile, unlink, readFileSync, rm, pathExists } from 'fs-extra';
-import * as globby from 'globby';
-import * as JSZip from 'jszip';
+import { join } from 'path';
+import { copy, writeFile, unlink, readFileSync, rm, pathExists } from 'fs-extra';
 import * as uuid from 'uuid-1345';
 
 
@@ -115,55 +112,5 @@ export class PyCDS extends common.AbstractPGO {
       })
       .catch(err => Promise.reject('trigger 创建失败，跳过生成'))
       .then(_ => { this.tmpContext.trigger = triggerName });
-  }
-
-  private async makeZip(sourceDirection: string, targetFileName: string) {
-    let ignore = [];
-    const fileList = await globby(['**', '.s/**'], {
-      onlyFiles: false,
-      followSymbolicLinks: false,
-      cwd: sourceDirection,
-      ignore,
-    });
-    const zip = new JSZip();
-    const isWindows = platform() === 'win32';
-    for (const fileName of fileList) {
-      const absPath = join(sourceDirection, fileName);
-      const stats = await lstat(absPath);
-
-      if (stats.isDirectory()) {
-        zip.folder(fileName);
-      } else if (stats.isSymbolicLink()) {
-        let link = await readlink(absPath);
-        if (isWindows) {
-          link = relative(dirname(absPath), link).replace(/\\/g, '/');
-        }
-        zip.file(fileName, link, {
-          binary: false,
-          createFolders: true,
-          unixPermissions: stats.mode,
-        });
-      } else if (stats.isFile()) {
-        const fileData = await readFile(absPath);
-        zip.file(fileName, fileData, {
-          binary: true,
-          createFolders: true,
-          unixPermissions: stats.mode,
-        });
-      }
-    }
-    await new Promise((res, rej) => {
-      zip
-        .generateNodeStream({
-          platform: 'UNIX',
-          compression: 'DEFLATE',
-          compressionOptions: {
-            level: 6
-          }
-        })
-        .pipe(createWriteStream(targetFileName))
-        .once('finish', res)
-        .once('error', rej);
-    });
   }
 }
