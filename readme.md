@@ -3,13 +3,57 @@
 PGO（Profile Guided Optimization），是一种根据运行时 Profiling Data 来进行优化的技术。
 本项目的主要目标是通过运行时信息优化动态语言的启动速度。
 
-目前本项目通过不同的方案支持如下语言
+本项目目前支持如下语言：
 
-### Node.js
-### Java
-### Python
+1. Node.js
+2. Java
+3. Python
 
-### Node.js
+## 使用方法
+
+本项目可作为 [Serverless-Devs](https://www.serverless-devs.com/) 工具的插件，在部署 Serverless 应用时自动创建并应用加速模块，具体配置如下：
+
+### 前置条件
+
+1. 待集成的 serverless-devs 项目，以下假设模型文件为默认的 `s.yaml`
+2. 确保 `s.yaml` 中包含需要加速的 fc 函数计算服务
+3. 确保前述服务使用如下支持的 runtime 之一
+   - `nodejs14`
+   - `nodejs16`
+   - `python3.9`
+   - ...
+
+### 通用配置
+
+1. 在 `s.yaml` 中的 service actions 中添加 `pre-deploy` ，配置 run 命令为 `s cli pgo`，如图所示
+
+![](https://gw.alicdn.com/imgextra/i2/O1CN01I1r4Px1zLjaHcU0ZD_!!6000000006698-2-tps-1646-642.png)
+
+3. 部署函数
+```shell
+s deploy
+```
+
+4. 调用函数，验证部署是否成功
+```shell
+s cli fc-api invokeFunction
+```
+
+### 语言相关配置
+
+#### Node.js
+#### Java
+#### Python
+
+
+### 详细参数
+
+```
+--model	serverless-devs 模型文件，默认为当前目录下 s.yaml
+--service	模型文件中含有多个服务时指定服务
+--lang	指定使用的语言
+--code	指定代码文件夹
+```
 
 ## 介绍
 
@@ -36,27 +80,6 @@ PGO 的 `Require Cache` 中除了之前提到的关系之外，还会存储：
 + 寻径时间（反复 statx，在 Node.js 中的封装逻辑更为复杂）；
 + 读取文件时间（反复 openat，经 Node.js 封装逻辑更为复杂）；
 + 源代码文本编译执行缩减为 byte code 编译执行。
-
-
-## 如何使用？
-目前 PGO 与 [Serverless Devs](https://www.serverless-devs.com/zh-cn) 实现了集成，可以通过 Serverless Devs 的 `s cli` 直接使用。
-
-1. 在 `s.yaml` 中的 service actions 中添加 `pre-deploy` ，配置 run 命令为 `s cli pgo`，如图所示
-
-
-![](https://gw.alicdn.com/imgextra/i2/O1CN01I1r4Px1zLjaHcU0ZD_!!6000000006698-2-tps-1646-642.png)
-
-2. 将 `s.yaml` 中的 runtime 改为 `nodejs14`
-
-3. 部署函数
-```shell
-s deploy
-```
-
-4. 调用函数
-```shell
-s cli fc-api invokeFunction --serviceName fctest --functionName functest1 --event '{}'
-```
 
 ## 参数
 
