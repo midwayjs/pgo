@@ -1,66 +1,18 @@
 import { execSync } from "child_process";
 import { platform } from 'os';
 import { dirname, join, relative } from 'path';
-import { lstat, readlink, createWriteStream, readFile, copy, writeFile, unlink, readFileSync, existsSync, rm, exists, pathExists } from 'fs-extra';
+import { lstat, readlink, createWriteStream, readFile, copy, writeFile, unlink, readFileSync, rm, pathExists } from 'fs-extra';
 import * as globby from 'globby';
 import * as JSZip from 'jszip';
 import * as uuid from 'uuid-1345';
 
 
-import * as FCClientInner from '@alicloud/fc2';
-
-
 // import * as common from "./common"
 // import {PromiseOnly} from "got";
 
-import * as main from "./main"
 import * as common from "./common";
 
-abstract class AbstractPGO {
-  pwd = process.cwd();
-  params: main.ComponentProps;
-  options: main.PGOOptions;
-
-  abstract run(): Promise<any>
-
-  constructor(params: main.ComponentProps, options: main.PGOOptions) {
-    this.params = params
-    this.options = options
-  }
-
-  tmpContext: {
-    client: any,
-    service: string,
-    function: string,
-    trigger: string,
-  }
-
-  async get_fcclient() {
-    var client = this.tmpContext?.client
-
-    if (!client) {
-      console.debug('initing sdk')
-      const { accountID, accessKeyID, accessKeySecret } = await common.getCredential('default')
-      client = new FCClientInner(accountID, {
-        region: this.options.region,
-        endpoint: await common.getEndPoint(),
-        accessKeyID: accessKeyID,
-        accessKeySecret: accessKeySecret,
-      });
-
-      this.tmpContext = {
-        client: client,
-        service: this.tmpContext?.service,
-        function: this.tmpContext?.function,
-        trigger: this.tmpContext?.trigger,
-      }
-    }
-
-    return this.tmpContext.client
-  }
-}
-
-export class PyCDS extends AbstractPGO {
+export class PyCDS extends common.AbstractPGO {
   async run() {
     return this.cleanup_artifacts()
       .then(this.create_tmp_function.bind(this))
@@ -88,41 +40,6 @@ export class PyCDS extends AbstractPGO {
     return this.get_fcclient()
       .then(client => client.get(`/proxy/${this.tmpContext.service}/${this.tmpContext.function}/pgo_dump/download`))
       .then(data => writeFile(join(this.options.codeUri, 'cds.img'), data))
-  }
-
-  async cleanup_tmp_function(): Promise<void> {
-    const client = await this.get_fcclient()
-    const s = this.tmpContext.service
-    const f = this.tmpContext.function
-
-    return client.listTriggers(this.tmpContext.service, this.tmpContext.function)
-      .then(data => {
-        const { triggers } = data
-        return Promise.all(triggers.map(t => client.deleteTrigger(s, f, t.triggerName)))
-      })
-
-      .finally(() => { return client.listAliases(s, { limit: 100 }) })
-      .then(data => {
-        const { aliases } = data
-        return Promise.all(aliases.map(a => client.deleteAlias(s, a.aliasName)))
-      })
-
-      .finally(() => { return client.listVersions(s, { limit: 100 }) })
-      .then(data => {
-        const { versions } = data
-        return Promise.all(versions.map(v => client.deleteVersion(s, v.versionId)))
-      })
-
-      .finally(() => { return client.listFunctions(s, { limit: 100 }) })
-      .then(data => {
-        const { functions } = data
-        return Promise.all(functions.map(f => client.deleteFunction(s, f.functionName)))
-      })
-
-      .finally(() => client.deleteService(s) )
-
-      // ignore errors
-      .catch(_ => Promise.resolve(undefined))
   }
 
   patch_orig_function(): Promise<any> {

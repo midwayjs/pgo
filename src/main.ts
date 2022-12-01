@@ -2,8 +2,7 @@ import * as minimist from 'minimist';
 import * as core from "@serverless-devs/core"
 import { existsSync, readFileSync } from 'fs-extra';
 
-import { PGO } from './index';
-import JavaStartupAccelerationComponent from "./javaMain";
+import { NodePGO } from './node';
 import * as common from "./common"
 import * as pycds from "./pycds"
 
@@ -13,7 +12,8 @@ const JAVA_RUNTIME = 'java'
 const SUPPORTED_PYTHON_RUNTIMES = ['python3.9']
 
 /**
- * Ref: https://docs.serverless-devs.com/sdm/serverless_package_model/package_model
+ * Arguments passed by serverless-devs
+ * Ref: https://docs.serverless-devs.com/sdm/serverless_package_model/package_model#%E7%BB%84%E4%BB%B6%E6%A8%A1%E5%9E%8B%E4%BB%A3%E7%A0%81%E8%A7%84%E8%8C%83
  */
 export type ComponentProps = {
   command: string;
@@ -36,6 +36,13 @@ export type PGOOptions = {
   serviceModel;
 
   // valuable fields exracted from serviceModel
+  access: string;
+  credentials: {
+    accountID: string;
+    accessKeyID: string;
+    accessKeySecret: string;
+  };
+  endpoint: string;
   region: string;
   initializer: string;
   handler: string;
@@ -51,13 +58,13 @@ export const DefaultPGOOptioins = {
   remove_node_modules: false
 }
 
-async function parseOptions(args): Promise<PGOOptions> {
-  const opts = minimist(args)
+async function parseOptions(args: ComponentProps): Promise<PGOOptions> {
+  const opts = minimist(args.argsObj)
   console.error(opts)
 
   var model = opts.model || 's.yaml'
   if (!existsSync(model)) {
-    throw new Error('cannot find s.yaml file, specific --model to the yaml file.')
+    throw new Error(`cannot find ${model} file, specific --model to the yaml file.`)
   }
   const yamlContent = readFileSync(model, 'utf8')
   const serviceModel = core.parseYaml(yamlContent)
@@ -80,88 +87,57 @@ async function parseOptions(args): Promise<PGOOptions> {
     }
   }
 
-  // 其他属性
-  const lang = serviceModel.services[funcName].props.function.runtime
-  const initializer = serviceModel.services[funcName].props.function.initializer
-  const handler = serviceModel.services[funcName].props.function.handler
-  const codeUri = serviceModel.services[funcName].props.function.codeUri
-  const region = serviceModel.services[funcName].props.region
+  const access = opts.access || args.project.access;
+  const c = args.credentials || await core.getCredential(access);
+  const credential = {
+    accountID: c.AccountID,
+    accessKeySecret: c.AccessKeySecret,
+    accessKeyID: c.AccessKeyID,
+  }
 
   return {
     serviceModel: serviceModel,
 
     service: funcName,
 
-    lang: lang,
-    initializer: initializer,
-    handler: handler,
-    codeUri: codeUri,
-    region: region,
+    access: access,
+    credentials: credential,
+    endpoint: await common.getEndPoint(),
+    lang: serviceModel.services[funcName].props.function.runtime,
+    initializer: serviceModel.services[funcName].props.function.initializer,
+    handler: serviceModel.services[funcName].props.function.handler,
+    codeUri: serviceModel.services[funcName].props.function.codeUri,
+    region: serviceModel.services[funcName].props.region,
 
-    remove_node_modules: false,
-    ...DefaultPGOOptioins
+    remove_node_modules: opts?.['remove-nm'],
+    // ...DefaultPGOOptioins
   };
 }
 
 export default class PGOComponent {
   defaultAccess = 'default';
 
-  constructor(params: any = {}) {
-    if (params.access) {
-      this.defaultAccess = params.access;
-    }
-  }
+  constructor(params: any = {}) {}
 
   async gen(params: ComponentProps) {
     await this.index(params);
   }
 
   async index(params: ComponentProps) {
-    const options = await parseOptions(params.argsObj || [])
+    const options = await parseOptions(params)
 
-    const args = minimist(params.argsObj || []);
-    const access = params?.project?.access || this.defaultAccess;
-    const credential = await common.getCredential(access);
-    const endpoint = await common.getEndPoint();
+    var pgoInstance: common.AbstractPGO
 
-
-    const lang = options.lang;
-    if (lang === NODE_RUNTIME) {
-      const pgoInstance = new PGO(process.cwd(), {
-        initializer: params?.props?.initializer || 'index.initializer',
-        credential,
-        access,
-        endpoint,
-        region: 'cn-chengdu'
-      });
-      await pgoInstance.gen(args);
-    } else if (lang === JAVA_RUNTIME) {
-      await this.java(params);
-    } else if (SUPPORTED_PYTHON_RUNTIMES.indexOf(lang) != -1) {
-      await this.python(params, options)
+    if (options.lang === NODE_RUNTIME) {
+      pgoInstance = new NodePGO(options)
+    } else if (options.lang === JAVA_RUNTIME) {
+      // pgoInstance = new JavaStartupAccelerationComponent(options)
+    } else if (SUPPORTED_PYTHON_RUNTIMES.indexOf(options.lang) != -1) {
+      pgoInstance = new pycds.PyCDS(options)
     } else {
       common.error("cannot parse runtime language, try to specific `--module` or `--lang`.");
     }
-  }
 
-  getLang(args) {
-    // todo: read lang from `runtime` field of service.
-    if (!args.lang) {
-      return NODE_RUNTIME;
-    }
-    return args.lang;
-  }
-
-  async java(params) {
-    const component = new JavaStartupAccelerationComponent(this.defaultAccess);
-    await component.index(params);
-  }
-
-  async python(params: ComponentProps, options: PGOOptions) {
-    common.info("start pycds")
-    const instance = new pycds.PyCDS(params, options)
-    await instance.run()
-      .catch(common.error)
-    common.info("end pycds")
+    await pgoInstance.run();
   }
 }

@@ -5,7 +5,7 @@ import {join} from "path";
 import {existsSync, readFile} from 'fs-extra'
 
 import {JavaStartupAcceleration} from './javaIndex';
-import {ARTIFACT_DIR, error, info, NAS, OSS, SRPATH, STREAM, getEndPoint, getCredential} from "./common";
+import {ARTIFACT_DIR, error, info, NAS, OSS, SRPATH, STREAM, getEndPoint} from "./common";
 
 export default class JavaStartupAccelerationComponent {
   defaultAccess = 'default';
@@ -34,7 +34,7 @@ export default class JavaStartupAccelerationComponent {
     let role = await this.getServiceConfig(moduleName, 'role', false);
     let logConfig = await this.getServiceConfig(moduleName, 'logConfig', false);
     const access = params?.project?.access || this.defaultAccess;
-    const credential = await getCredential(access);
+    const credential = undefined;
     let codeUri = await this.getFunctionConfig(moduleName, 'codeUri');
     let srpath = await this.getFunctionEnvVar(moduleName, 'SRPATH');
     if (!srpath) {
