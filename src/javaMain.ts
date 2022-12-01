@@ -1,11 +1,11 @@
 import * as core from "@serverless-devs/core"
 
 import * as path from "path";
-import {join} from "path";
-import {existsSync, readFile} from 'fs-extra'
+import { join } from "path";
+import { existsSync, readFile } from 'fs-extra'
 
-import {JavaStartupAcceleration} from './javaIndex';
-import {ARTIFACT_DIR, error, info, NAS, OSS, SRPATH, STREAM, getEndPoint} from "./common";
+import { JavaStartupAcceleration } from './javaIndex';
+import { ARTIFACT_DIR, error, info, NAS, OSS, SRPATH, STREAM, getEndPoint } from "./common";
 
 export default class JavaStartupAccelerationComponent {
   defaultAccess = 'default';

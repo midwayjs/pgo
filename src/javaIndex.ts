@@ -21,10 +21,10 @@ import * as YAML from 'js-yaml';
 import * as uuid from 'uuid-1345';
 import * as tar from 'tar';
 import * as child_process from 'child_process'
-import {error, info, debug, NAS, OSS, OSS_UTIL_URL, QUICK_START} from "./common";
+import { error, info, debug, NAS, OSS, OSS_UTIL_URL, QUICK_START } from "./common";
 import * as OSSClient from 'ali-oss';
 import got from 'got';
-import {promisify} from "util";
+import { promisify } from "util";
 import * as stream from "stream";
 import * as fs from "fs";
 
@@ -170,11 +170,11 @@ export class JavaStartupAcceleration {
     }
     const client = await this.getFCClient();
     let res = await client.updateFunction(
-        this.serviceName,
-        this.functionName,
-        {
-          environmentVariables: this.funcEnvVars,
-        });
+      this.serviceName,
+      this.functionName,
+      {
+        environmentVariables: this.funcEnvVars,
+      });
     info('update function result: ' + JSON.stringify(res));
   }
 
@@ -245,11 +245,11 @@ export class JavaStartupAcceleration {
     info("invoking assistant function to dump acceleration files");
     let body = 'srpath=' + this.tmpSrpath + ';type=dump;file=' + archiveFile + ";method=jcmd";
     if (this.downloader == OSS) {
-      const {ak, secret } = await this.getConfig();
+      const { ak, secret } = await this.getConfig();
       body += ';accessKeyId=' + ak + ';' +
-          'accessKeySecret=' + secret + ';' +
-          'endpoint=' + this.ossEndpoint + ';' +
-          'bucket=' + this.tmpBucketName;
+        'accessKeySecret=' + secret + ';' +
+        'endpoint=' + this.ossEndpoint + ';' +
+        'bucket=' + this.tmpBucketName;
     } else if (this.downloader == NAS && this.uploader != NAS) {
       let nasFilePath = join(this.nasConfig.mountPoints[0].mountDir, ARCHIVE_NAME);
       body += ';nasFilePath=' + nasFilePath + ';';
@@ -313,7 +313,7 @@ export class JavaStartupAcceleration {
       invocationRole: '',
       qualifier: 'LATEST',
       sourceArn: 'test',
-      triggerConfig: {authType: "anonymous", methods: ["POST"]},
+      triggerConfig: { authType: "anonymous", methods: ["POST"] },
       triggerName: tmpTriggerName,
       triggerType: 'http'
     });
@@ -478,14 +478,14 @@ export class JavaStartupAcceleration {
     const partSize = 3 * 1024 * 1024;
     let buffer = Buffer.from('');
     let currentLen = 0;
-    while(currentLen < size) {
+    while (currentLen < size) {
       let curPartSize = size - currentLen;
       if (curPartSize > partSize) {
         curPartSize = partSize;
       }
       info('download archive start=' + currentLen + ';size=' + curPartSize + ';file=' + ARCHIVE_PATH);
       const result = await fcClient.post(`/proxy/${tmpServiceName}/${tmpFunctionName}/action`,
-          'start=' + currentLen + ';size=' + curPartSize + ';file=' + ARCHIVE_PATH, null);
+        'start=' + currentLen + ';size=' + curPartSize + ';file=' + ARCHIVE_PATH, null);
       data = result.data;
       const buf = Buffer.from(data, 'base64');
       buffer = Buffer.concat([buffer, buf]);
@@ -621,9 +621,9 @@ export class JavaStartupAcceleration {
     if (isExists) {
       const yamlContent = await readFile(profPath, 'utf-8');
       const yaml: any = YAML.load(yamlContent);
-      const config = yaml[this.access ||  Object.keys(yaml)[0]];
+      const config = yaml[this.access || Object.keys(yaml)[0]];
       accountId = this.serverlessDevsDecrypt(config.AccountID)
-      ak =  this.serverlessDevsDecrypt(config.AccessKeyID);
+      ak = this.serverlessDevsDecrypt(config.AccessKeyID);
       secret = this.serverlessDevsDecrypt(config.AccessKeySecret);
     }
 
