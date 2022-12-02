@@ -125,7 +125,7 @@ export abstract class AbstractPGO {
         return Promise.all(functions.map(f => client.deleteFunction(s, f.functionName)))
       })
 
-      .finally(() => client.deleteService(s) )
+      .finally(() => client.deleteService(s))
 
       // ignore errors
       .catch(_ => Promise.resolve(undefined))
@@ -171,7 +171,7 @@ export abstract class AbstractPGO {
           platform: 'UNIX',
           compression: 'DEFLATE',
           compressionOptions: {
-              level: 6
+            level: 6
           }
         })
         .pipe(createWriteStream(targetFileName))
@@ -180,7 +180,31 @@ export abstract class AbstractPGO {
     });
   }
 
-  async downloadArchiveStream() {
-    
+  /**
+   * 服务端以 base64 分块传输
+   */
+  async downloadArchive(serviceName, functionName) {
+    const client = await this.get_fcclient()
+
+    const result = await client.invokeFunction(serviceName, functionName, JSON.stringify({ type: 'size' }));
+    if (!result.data || !/^\d+$/.test(result.data)) {
+      console.log('result.data', result.data);
+      throw new Error(`PGO gen error:` + (result.data || 'unknown'));
+    }
+    const size = +result.data;
+    const partSize = 3 * 1024 * 1024;
+    let buffer = Buffer.from('');
+    let currentLen = 0;
+    while (currentLen < size) {
+      let curPartSize = size - currentLen;
+      if (curPartSize > partSize) {
+        curPartSize = partSize;
+      }
+      const result = await client.invokeFunction(serviceName, functionName, JSON.stringify({ start: currentLen, size: partSize }));
+      const buf = Buffer.from(result.data, 'base64');
+      buffer = Buffer.concat([buffer, buf]);
+      currentLen += curPartSize;
+    }
+    return buffer;
   }
 }

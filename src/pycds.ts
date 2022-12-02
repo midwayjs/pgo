@@ -37,9 +37,7 @@ export class PyCDS extends common.AbstractPGO {
 
   async download_from_tmp_function(): Promise<void> {
     common.debug('download')
-    return this.get_fcclient()
-      .then(client => client.get(`/proxy/${this.tmpContext.service}/${this.tmpContext.function}/pgo_dump/download`))
-      .then(data => writeFile(join(this.options.codeUri, 'cds.img'), data))
+    return writeFile(join(this.options.codeUri, 'cds.img'), this.downloadArchive(this.tmpContext.service, this.tmpContext.function))
   }
 
   patch_orig_function(): Promise<any> {
