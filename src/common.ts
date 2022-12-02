@@ -15,7 +15,6 @@ import * as clientInner from '@alicloud/fc2';
 
 import * as main from './main'
 
-// import globby = require('globby');
 import { tmpdir } from 'os';
 import { join } from 'path';
 
