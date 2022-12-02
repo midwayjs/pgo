@@ -1,17 +1,15 @@
 import json
 
-from index import initializer
-
 
 def gen_handler(event, context):
     event = json.loads(event)
     img = dump_pgo()
-    if event['type'] == 'size':
+    if event.get('type') == 'size':
         return len(img)
     else:
         import base64
         start, size = event['start'], event['size']
-        return base64.b64encode(img[start, start + size])
+        return base64.b64encode(img[start:start + size])
 
 
 def dump_pgo() -> bytes:

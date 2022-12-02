@@ -7,14 +7,10 @@ export const ARTIFACT_DIR = 'target/artifact';
 export const OSS_UTIL_URL = 'https://gosspublic.alicdn.com/ossutil/1.7.9/ossutil64';
 
 import { copy, ensureDir } from 'fs-extra';
-import { platform } from 'os';
-import { dirname, relative } from 'path';
-import { lstat, readlink, createWriteStream, readFile } from 'fs-extra';
+import { createWriteStream } from 'fs-extra';
 
 import * as core from '@serverless-devs/core';
-import * as FCClientInner from '@alicloud/fc2';
-import * as globby from 'globby';
-import * as JSZip from 'jszip';
+import * as clientInner from '@alicloud/fc2';
 
 
 import * as main from './main'
@@ -73,12 +69,12 @@ export abstract class AbstractPGO {
     trigger: string,
   }
 
-  async get_fcclient() {
+  async get_client() {
     var client = this.tmpContext?.client
 
     if (!client) {
       console.debug('initing sdk')
-      client = new FCClientInner(this.options.credentials.accountID, {
+      client = new clientInner(this.options.credentials.accountID, {
         region: this.options.region,
         endpoint: this.options.endpoint,
         accessKeyID: this.options.credentials.accessKeyID,
@@ -97,94 +93,56 @@ export abstract class AbstractPGO {
   }
 
   async cleanup_tmp_function(): Promise<void> {
-    const client = await this.get_fcclient()
+    const client = await this.get_client()
     const s = this.tmpContext.service
-    const f = this.tmpContext.function
 
-    return client.listTriggers(this.tmpContext.service, this.tmpContext.function)
-      .then(data => {
-        const { triggers } = data
-        return Promise.all(triggers.map(t => client.deleteTrigger(s, f, t.triggerName)))
-      })
+    const { aliases } = (await client.listAliases(s, { limit: 100 })).data;
+    await Promise.all(aliases.map(alias => client.deleteAlias(s, alias.aliasName)));
 
-      .finally(() => { return client.listAliases(s, { limit: 100 }) })
-      .then(data => {
-        const { aliases } = data
-        return Promise.all(aliases.map(a => client.deleteAlias(s, a.aliasName)))
-      })
+    const { versions } = (await client.listVersions(s, { limit: 100 })).data;
+    await Promise.all(versions.map(version => client.deleteVersion(s, version.versionId)));
 
-      .finally(() => { return client.listVersions(s, { limit: 100 }) })
-      .then(data => {
-        const { versions } = data
-        return Promise.all(versions.map(v => client.deleteVersion(s, v.versionId)))
-      })
+    const { functions } = (await client.listFunctions(s, { limit: 100 })).data;
 
-      .finally(() => { return client.listFunctions(s, { limit: 100 }) })
-      .then(data => {
-        const { functions } = data
-        return Promise.all(functions.map(f => client.deleteFunction(s, f.functionName)))
-      })
+    for (const func of functions) {
+      const { triggers } = (await client.listTriggers(s, func.functionName, { limit: 100 })).data;
+      await Promise.all(triggers.map(trigger => client.deleteTrigger(s, func.functionName, trigger.triggerName)));
+    }
 
-      .finally(() => client.deleteService(s))
+    await Promise.all(functions.map(func => client.deleteFunction(s, func.functionName)));
 
-      // ignore errors
-      .catch(_ => Promise.resolve(undefined))
+    await client.deleteService(s);
   }
 
   async makeZip(sourceDirection: string, targetFileName: string) {
-    let ignore = [];
-    const fileList = await globby(['**'], {
-      onlyFiles: false,
-      followSymbolicLinks: false,
-      cwd: sourceDirection,
-      ignore,
-    });
-    const zip = new JSZip();
-    const isWindows = platform() === 'win32';
-    for (const fileName of fileList) {
-      const absPath = join(sourceDirection, fileName);
-      const stats = await lstat(absPath);
-      if (stats.isDirectory()) {
-        zip.folder(fileName);
-      } else if (stats.isSymbolicLink()) {
-        let link = await readlink(absPath);
-        if (isWindows) {
-          link = relative(dirname(absPath), link).replace(/\\/g, '/');
-        }
-        zip.file(fileName, link, {
-          binary: false,
-          createFolders: true,
-          unixPermissions: stats.mode,
-        });
-      } else if (stats.isFile()) {
-        const fileData = await readFile(absPath);
-        zip.file(fileName, fileData, {
-          binary: true,
-          createFolders: true,
-          unixPermissions: stats.mode,
-        });
-      }
-    }
-    await new Promise((res, rej) => {
-      zip
-        .generateNodeStream({
-          platform: 'UNIX',
-          compression: 'DEFLATE',
-          compressionOptions: {
-            level: 6
+    return new Promise((res, rej) => {
+      const archiver = require('archiver');
+
+      const archive = archiver('zip', {
+        zlib: { level: 9 } // Sets the compression level.
+      });
+
+      archive
+        .once('finish', res)
+        .once('error', rej)
+        .on('warning', function (err) {
+          if (err.code === 'ENOENT') {
+          } else {
+            throw err;
           }
         })
-        .pipe(createWriteStream(targetFileName))
-        .once('finish', res)
-        .once('error', rej);
-    });
+        .pipe(createWriteStream(targetFileName));
+
+      archive.directory(sourceDirection, false);
+      archive.finalize();
+    })
   }
 
   /**
    * 服务端以 base64 分块传输
    */
   async downloadArchive(serviceName, functionName) {
-    const client = await this.get_fcclient()
+    const client = await this.get_client()
 
     const result = await client.invokeFunction(serviceName, functionName, JSON.stringify({ type: 'size' }));
     if (!result.data || !/^\d+$/.test(result.data)) {

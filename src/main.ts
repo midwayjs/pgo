@@ -1,6 +1,7 @@
 import * as minimist from 'minimist';
 import * as core from "@serverless-devs/core"
 import { existsSync, readFileSync } from 'fs-extra';
+import * as path from 'path';
 
 import { NodePGO } from './node';
 import * as common from "./common"
@@ -66,6 +67,7 @@ async function parseOptions(args: ComponentProps): Promise<PGOOptions> {
   if (!existsSync(model)) {
     throw new Error(`cannot find ${model} file, specific --model to the yaml file.`)
   }
+  model = path.resolve(model)
   const yamlContent = readFileSync(model, 'utf8')
   const serviceModel = core.parseYaml(yamlContent)
 

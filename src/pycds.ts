@@ -37,7 +37,9 @@ export class PyCDS extends common.AbstractPGO {
 
   async download_from_tmp_function(): Promise<void> {
     common.debug('download')
-    return writeFile(join(this.options.codeUri, 'cds.img'), this.downloadArchive(this.tmpContext.service, this.tmpContext.function))
+    await writeFile(join(this.options.codeUri, 'cds.img'), await this.downloadArchive(this.tmpContext.service, this.tmpContext.function))
+    console.log(1)
+    return
   }
 
   patch_orig_function(): Promise<any> {
@@ -46,6 +48,7 @@ export class PyCDS extends common.AbstractPGO {
   }
 
   async create_tmp_function(): Promise<any> {
+    var tmpFuncArgs = {}
     const tmpFunc = await common.copyToTmp('.')
     common.debug(`copy original project to ${tmpFunc}`)
 
@@ -65,13 +68,20 @@ export class PyCDS extends common.AbstractPGO {
     }
 
     const funcCode = join(tmpFunc, this.options.codeUri)
+    const tmpEntry = join(funcCode, 'pgo_index.py')
 
-    await copy(join(__dirname, '../resources/pgo_index.py'), join(funcCode, 'pgo_index.py'));
+    await copy(join(__dirname, '../resources/pgo_index.py'), tmpEntry);
+    if (this.options.initializer) {
+      const initializer = this.options.initializer.split('.')
+      await writeFile(tmpEntry, `from ${initializer[0]} import ${initializer[1]}\n` + readFileSync(tmpEntry, 'utf-8'));
+      tmpFuncArgs['initializer'] = `pgo_index.${initializer[1]}`
+    }
 
-    await this.makeZip(funcCode, "tmp.zip")
+    const tmpArchive = join(tmpFunc, "tmp.zip")
+    await this.makeZip(funcCode, tmpArchive)
 
     console.debug('initing sdk')
-    const client = await this.get_fcclient();
+    const client = await this.get_client();
 
     // create service
     console.debug('create service')
@@ -90,12 +100,11 @@ export class PyCDS extends common.AbstractPGO {
       .then(_ => {
         return client.createFunction(serviceName, {
           code: {
-            zipFile: readFileSync("tmp.zip", 'base64')
+            zipFile: readFileSync(tmpArchive, 'base64')
           },
           description: '',
           functionName,
           handler: 'pgo_index.gen_handler',
-          initializer: 'pgo_index.initializer',
           memorySize: 1024,
           runtime: 'python3.9',
           timeout: 300,
@@ -105,17 +114,8 @@ export class PyCDS extends common.AbstractPGO {
             PYCDSMODE: 'TRACE',
             PYCDSLIST: '/tmp/cds.lst'
           },
+          ...tmpFuncArgs
         }).catch((err: any) => Promise.reject(new Error(`function 创建失败: ${err}`)))
-      })
-      .then(_ => {
-        return client.createTrigger(serviceName, functionName, {
-          invocationRole: '',
-          qualifier: 'LATEST',
-          sourceArn: 'test',
-          triggerConfig: { authType: "anonymous", methods: ["GET"] },
-          triggerName: triggerName,
-          triggerType: 'http'
-        }).catch((err: any) => Promise.reject(new Error(`trigger 创建失败: ${err}`)))
       })
   }
 }

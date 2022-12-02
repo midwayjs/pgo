@@ -95,7 +95,7 @@ exports.${initializerFun} = async (context, callback) => {
     await this.makeZip(tmpDir, tmpZipFilePath);
 
     // 获取阿里云账号信息
-    const fcClient = await this.get_fcclient();
+    const fcClient = await this.get_client();
 
     // 创建临时函数
     // 创建临时 servive
